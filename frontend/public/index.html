@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>E-Voting System — Patan Multiple Campus</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --ink: #0d1117;
+    --ink2: #1a2332;
+    --paper: #f5f0e8;
+    --cream: #faf7f2;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --gold-dark: #9a7a2e;
+    --crimson: #b91c1c;
+    --emerald: #065f46;
+    --emerald-light: #10b981;
+    --sky: #1e40af;
+    --sky-light: #3b82f6;
+    --muted: #6b7280;
+    --border: #d1c9b8;
+    --shadow: 0 4px 24px rgba(13,17,23,0.12);
+    --shadow-lg: 0 12px 48px rgba(13,17,23,0.18);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── LAYOUT ── */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── NAV ── */
+  nav {
+    background: var(--ink);
+    border-bottom: 3px solid var(--gold);
+    padding: 0 3rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 92px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .nav-brand {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .nav-logo {
+    width: 50px; height: 50px;
+    background: var(--gold);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif;
+    font-weight: 900; font-size: 22px; color: var(--ink);
+  }
+  .nav-title { color: #fff; font-size: 17px; font-weight: 600; }
+  .nav-subtitle { color: var(--gold); font-size: 13px; font-weight: 400; }
+  .nav-links { display: flex; align-items: center; gap: 14px; }
+  .nav-btn {
+    background: transparent;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8);
+    padding: 10px 22px; border-radius: 6px;
+    font-size: 15px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+  .nav-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .nav-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); }
+  .nav-btn.danger { border-color: rgba(185,28,28,0.5); color: #f87171; }
+  .nav-btn.danger:hover { background: rgba(185,28,28,0.2); }
+
+  /* ── MAIN ── */
+  main { flex: 1; }
+
+  /* ── HERO / LANDING ── */
+  .hero {
+    background: var(--ink);
+    min-height: calc(100vh - 64px);
+    display: grid; grid-template-columns: 1fr 0.5fr;
+    align-items: flex-start;
+    padding: 2.5rem 3rem;
+    gap: 1.2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 70% 50%, rgba(201,168,76,0.08) 0%, transparent 60%);
+  }
+  .hero-text { position: relative; z-index: 1; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 6px 14px; border-radius: 100px;
+    font-size: 12px; font-weight: 500; letter-spacing: 0.5px;
+    margin-bottom: 1.2rem;
+    text-transform: uppercase;
+  }
+  .hero-badge span { width: 6px; height: 6px; background: var(--gold); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(4rem, 7.5vw, 5.8rem);
+    font-weight: 900;
+    color: #fff;
+    line-height: 1.08;
+    margin-bottom: 0.8rem;
+  }
+  .hero h1 em { color: var(--gold); font-style: normal; }
+  .hero p {
+    color: rgba(255,255,255,0.73);
+    font-size: 19px; line-height: 1.9;
+    max-width: 850px;
+    margin-bottom: 1.8rem;
+  }
+  .hero-actions { display: flex; gap: 24px; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--gold);
+    color: var(--ink);
+    border: none;
+    padding: 18px 42px; border-radius: 8px;
+    font-size: 17px; font-weight: 600;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { background: var(--gold-light); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(201,168,76,0.3); }
+  .btn-secondary {
+    background: transparent;
+    color: #fff;
+    border: 1.5px solid rgba(255,255,255,0.3);
+    padding: 18px 42px; border-radius: 8px;
+    font-size: 17px; font-weight: 500;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* ── SECURITY CARDS ── */
+  .hero-cards { position: relative; z-index: 1; }
+
+  /* ── LIVE ELECTION UPDATE ── */
+  .live-election-update {
+    position: relative; 
+    z-index: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 2rem;
+    height: fit-content;
+    margin-top: 1rem;
+  }
+  .live-election-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .live-datetime {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+  .live-date-text {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .live-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--gold);
+    line-height: 1;
+  }
+  .live-dot { 
+    width: 8px; 
+    height: 8px; 
+    background: var(--emerald-light); 
+    border-radius: 50%; 
+    animation: pulse 1.5s infinite; 
+  }
+  .election-stat {
+    margin-bottom: 1.5rem;
+  }
+  .election-stat:last-child {
+    margin-bottom: 0;
+  }
+  .stat-name {
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .stat-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--gold);
+    line-height: 1;
+  }
+  .security-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sec-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.2s;
+  }
+  .sec-card:hover { border-color: rgba(201,168,76,0.3); background: rgba(201,168,76,0.05); }
+  .sec-card-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+  .sec-card h3 { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .sec-card p { font-size: 11px; color: rgba(255,255,255,0.45); line-height: 1.5; }
+
+  /* ── ALGORITHM BADGE ── */
+  .algo-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(201,168,76,0.1);
+    border: 1px solid rgba(201,168,76,0.3);
+    padding: 4px 10px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--gold);
+    margin-top: 8px;
+  }
+
+  /* ── PAGE CONTAINER ── */
+  .page { max-width: 1100px; margin: 0 auto; padding: 2.5rem 2rem; }
+  .page-sm { max-width: 520px; margin: 0 auto; padding: 3rem 1.5rem; }
+
+  /* ── FORM CARD ── */
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.5rem;
+    box-shadow: var(--shadow);
+  }
+  .card-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem; font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.4rem;
+  }
+  .card-subtitle { color: var(--muted); font-size: 14px; margin-bottom: 2rem; line-height: 1.5; }
+
+  /* ── FORM ── */
+  .form-group { margin-bottom: 1.25rem; }
+  .form-label {
+    display: block;
+    font-size: 13px; font-weight: 500; color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .form-input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    background: #fff;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .form-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,168,76,0.12); }
+  .form-input.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
+  .form-hint { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+
+  .btn-full {
+    width: 100%;
+    background: var(--ink);
+    color: #fff; border: none;
+    padding: 13px; border-radius: 8px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-full:hover { background: var(--ink2); transform: translateY(-1px); }
+  .btn-full:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
+  .btn-gold {
+    background: var(--gold); color: var(--ink);
+  }
+  .btn-gold:hover { background: var(--gold-light); }
+
+  /* ── DIVIDER ── */
+  .divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 1.5rem 0; color: var(--muted); font-size: 13px;
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 4px; background: var(--paper); border-radius: 10px; padding: 4px; margin-bottom: 2rem; }
+  .tab {
+    flex: 1; padding: 9px; border: none; border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; background: transparent; color: var(--muted);
+    transition: all 0.2s;
+  }
+  .tab.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+
+  /* ── OTP DISPLAY ── */
+  .otp-box {
+    background: var(--ink);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    margin: 1rem 0;
+  }
+  .otp-label { color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .otp-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.5rem; font-weight: 500;
+    color: var(--gold);
+    letter-spacing: 0.2em;
+  }
+  .otp-note { color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 8px; }
+
+  /* ── ELECTION CARD ── */
+  .election-card {
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 1.75rem;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative; overflow: hidden;
+  }
+  .election-card:hover { border-color: var(--gold); box-shadow: var(--shadow); transform: translateY(-2px); }
+  .election-card::before {
+    content: ''; position: absolute; top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: var(--gold);
+  }
+  .election-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .status-active { background: rgba(6,95,70,0.1); color: var(--emerald); }
+  .status-active .dot { width: 6px; height: 6px; background: var(--emerald-light); border-radius: 50%; animation: pulse 1.5s infinite; }
+  .status-upcoming { background: rgba(30,64,175,0.1); color: var(--sky); }
+  .status-closed { background: rgba(107,114,128,0.1); color: var(--muted); }
+
+  /* ── BALLOT ── */
+  .ballot-header {
+    background: var(--ink);
+    border-radius: 14px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    position: relative; overflow: hidden;
+  }
+  .ballot-header::after {
+    content: '';
+    position: absolute; bottom: -30px; right: -30px;
+    width: 120px; height: 120px;
+    border: 20px solid rgba(201,168,76,0.15);
+    border-radius: 50%;
+  }
+  .ballot-header h2 {
+    font-family: 'Playfair Display', serif;
+    color: #fff; font-size: 1.6rem; margin-bottom: 0.5rem;
+  }
+  .ballot-header p { color: rgba(255,255,255,0.55); font-size: 13px; }
+  .ballot-timer {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--gold); font-size: 13px; font-weight: 500; margin-top: 12px;
+  }
+
+  /* ── CANDIDATE CARD ── */
+  .candidate-card {
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: #fff;
+  }
+  .candidate-card:hover { border-color: var(--gold-dark); box-shadow: 0 4px 16px rgba(201,168,76,0.15); }
+  .candidate-card.selected {
+    border-color: var(--gold);
+    background: rgba(201,168,76,0.05);
+    box-shadow: 0 0 0 4px rgba(201,168,76,0.1);
+  }
+  .candidate-avatar {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--ink) 0%, var(--ink2) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem; font-weight: 700; color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .candidate-name { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+  .candidate-pos { font-size: 12px; color: var(--gold-dark); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .candidate-dept { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .candidate-manifesto { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+  .selected-check {
+    position: absolute; top: 14px; right: 14px;
+    width: 24px; height: 24px;
+    background: var(--gold);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--ink);
+  }
+
+  /* ── CONFIRM MODAL ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(13,17,23,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .modal {
+    background: #fff;
+    border-radius: 20px;
+    padding: 2.5rem;
+    max-width: 480px; width: 100%;
+    box-shadow: var(--shadow-lg);
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+  .modal h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem; color: var(--ink); margin-bottom: 1rem;
+  }
+
+  /* ── SUCCESS SCREEN ── */
+  .success-screen {
+    text-align: center; padding: 4rem 2rem;
+    max-width: 500px; margin: 0 auto;
+  }
+  .success-icon {
+    width: 80px; height: 80px;
+    background: var(--emerald);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.5rem; color: #fff;
+    margin: 0 auto 1.5rem;
+    box-shadow: 0 0 0 12px rgba(6,95,70,0.12);
+  }
+  .success-screen h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem; color: var(--ink); margin-bottom: 0.75rem;
+  }
+  .tx-hash {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    word-break: break-all;
+    text-align: left;
+    margin: 1.25rem 0;
+  }
+  .tx-hash strong { display: block; font-size: 10px; color: var(--gold-dark); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+
+  /* ── ADMIN DASHBOARD ── */
+  .dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 2rem; }
+  .stat-card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 14px; padding: 1.5rem;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::after {
+    content: ''; position: absolute; top: -20px; right: -20px;
+    width: 80px; height: 80px; border-radius: 50%;
+    opacity: 0.07;
+  }
+  .stat-card.gold::after { background: var(--gold); }
+  .stat-card.emerald::after { background: var(--emerald-light); }
+  .stat-card.crimson::after { background: var(--crimson); }
+  .stat-card.sky::after { background: var(--sky-light); }
+  .stat-label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .stat-value { font-size: 2rem; font-weight: 700; color: var(--ink); line-height: 1; margin-bottom: 4px; }
+  .stat-sub { font-size: 12px; color: var(--muted); }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 10px 14px;
+    background: var(--paper); border-bottom: 2px solid var(--border);
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--muted);
+  }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--ink); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(201,168,76,0.03); }
+
+  /* ── ANOMALY SCORE ── */
+  .score-bar { display: flex; align-items: center; gap: 8px; }
+  .score-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .score-low { background: var(--emerald-light); }
+  .score-mid { background: #f59e0b; }
+  .score-high { background: var(--crimson); }
+  .flag-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 100px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+  }
+  .flag-yes { background: rgba(185,28,28,0.1); color: var(--crimson); }
+  .flag-no { background: rgba(6,95,70,0.1); color: var(--emerald); }
+
+  /* ── SECTION HEADER ── */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+  .section-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; }
+  .section-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ── SMALL BUTTON ── */
+  .btn-sm {
+    padding: 6px 14px; border-radius: 6px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    border: 1.5px solid; font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+  }
+  .btn-sm.green { border-color: var(--emerald-light); color: var(--emerald); background: rgba(6,95,70,0.07); }
+  .btn-sm.green:hover { background: rgba(6,95,70,0.15); }
+  .btn-sm.red { border-color: #f87171; color: var(--crimson); background: rgba(185,28,28,0.07); }
+  .btn-sm.red:hover { background: rgba(185,28,28,0.15); }
+  .btn-sm.blue { border-color: var(--sky-light); color: var(--sky); background: rgba(30,64,175,0.07); }
+  .btn-sm.blue:hover { background: rgba(30,64,175,0.15); }
+
+  /* ── RESULTS ── */
+  .result-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .result-rank { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--gold); font-weight: 900; width: 32px; }
+  .result-bar-wrap { flex: 1; }
+  .result-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .result-bar-track { height: 6px; background: var(--paper); border-radius: 3px; overflow: hidden; }
+  .result-bar-fill { height: 100%; background: var(--gold); border-radius: 3px; transition: width 1s ease; }
+  .result-votes { font-size: 13px; font-weight: 700; color: var(--ink); min-width: 60px; text-align: right; }
+
+  /* ── ALERT ── */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 1rem; }
+  .alert-error { background: rgba(185,28,28,0.1); border: 1px solid rgba(185,28,28,0.2); color: var(--crimson); }
+  .alert-success { background: rgba(6,95,70,0.1); border: 1px solid rgba(6,95,70,0.2); color: var(--emerald); }
+  .alert-info { background: rgba(30,64,175,0.08); border: 1px solid rgba(30,64,175,0.2); color: var(--sky); }
+
+  /* ── SPINNER ── */
+  .spinner { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-dark { border-color: rgba(13,17,23,0.2); border-top-color: var(--ink); }
+
+  /* ── GRID LAYOUTS ── */
+  .candidates-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .elections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+  /* ── PROGRESS ── */
+  .progress-track { height: 8px; background: var(--paper); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); border-radius: 4px; transition: width 1s ease; }
+
+  /* ── MODAL FORM ── */
+  .modal-form { display: flex; flex-direction: column; gap: 1rem; }
+
+  /* ── TAG ── */
+  .tag { display: inline-block; background: var(--paper); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--muted); }
+
+  /* ── ENCRYPTION INDICATOR ── */
+  .enc-indicator {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(6,95,70,0.08); border: 1px solid rgba(6,95,70,0.2);
+    border-radius: 8px; padding: 10px 14px;
+    font-size: 12px; color: var(--emerald);
+    margin-top: 1rem;
+  }
+  .enc-dot { width: 8px; height: 8px; background: var(--emerald-light); border-radius: 50%; animation: pulse 1.5s infinite; }
+
+  @media (max-width: 768px) {
+    .hero { grid-template-columns: 1fr; padding: 2rem; }
+    .hero-cards { display: none; }
+    .dash-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useContext, createContext, useCallback } = React;
+
+// ─── AUTH CONTEXT ─────────────────────────────────────────────────────────────
+const AuthCtx = createContext(null);
+function useAuth() { return useContext(AuthCtx); }
+
+// ─── MOCK DATA & API ──────────────────────────────────────────────────────────
+// In real use this calls the FastAPI backend. Here we simulate for demo.
+const MOCK = {
+  voters: [
+    { id:1, student_id:"79010020", password:"Pass@123", name:"Ashutosh Adhikari", email:"ashutosh@pmc.edu.np", otp:"123456", has_voted:false },
+    { id:2, student_id:"79010054", password:"Pass@123", name:"Manish Basnet", email:"manish@pmc.edu.np", otp:"123456", has_voted:false },
+    { id:3, student_id:"79010119", password:"Pass@123", name:"Snehal Sigdel", email:"snehal@pmc.edu.np", otp:"123456", has_voted:false },
+  ],
+  admins: [
+    { id:99, student_id:"ADMIN001", password:"Admin@123", name:"Election Admin", email:"admin@pmc.edu.np", otp:"000000", role:"admin" }
+  ],
+  elections: [
+    { id:1, title:"Student Council Election 2082/83", description:"Annual election for the Patan Multiple Campus Student Council. Cast your vote to choose your representatives.", status:"active", start_time:"2025-01-01T08:00:00", end_time:"2026-04-01T20:00:00", total_votes:47, public_key:"MOCK_PUBLIC_KEY" }
+  ],
+  candidates: [
+    { id:1, election_id:1, full_name:"Priya Sharma", position:"President", manifesto:"Building a stronger, more inclusive campus through transparent governance and accessible resources for every student.", department:"BCA", year:"4th Year", votes:18 },
+    { id:2, election_id:1, full_name:"Rohan Thapa", position:"President", manifesto:"Modernizing campus infrastructure, improving internet access, and creating industry partnership programs for BIT students.", department:"BIT", year:"3rd Year", votes:15 },
+    { id:3, election_id:1, full_name:"Anisha Karmacharya", position:"Vice President", manifesto:"Championing mental health awareness, gender equity, and cultural diversity across all departments.", department:"BSc.CSIT", year:"4th Year", votes:12 },
+    { id:4, election_id:1, full_name:"Dipesh Maharjan", position:"Vice President", manifesto:"Focused on academic excellence, library expansion, and creating internship opportunities for final-year students.", department:"BBA", year:"3rd Year", votes:2 },
+  ],
+  auditLogs: [
+    { id:1, event_type:"login_success", ip:"192.168.1.12", anomaly_score:0.12, is_flagged:false, details:"Normal login", created_at:"2025-06-10T09:12:00" },
+    { id:2, event_type:"vote_cast", ip:"192.168.1.12", anomaly_score:0.08, is_flagged:false, details:"Transaction: a3f8c2d1...", created_at:"2025-06-10T09:14:22" },
+    { id:3, event_type:"login_failed", ip:"10.0.0.55", anomaly_score:0.91, is_flagged:true, details:"Invalid OTP - 3 attempts", created_at:"2025-06-10T10:05:11" },
+    { id:4, event_type:"vote_cast", ip:"10.0.0.55", anomaly_score:0.88, is_flagged:true, details:"Bot-like session speed: 0.3s", created_at:"2025-06-10T10:05:14" },
+    { id:5, event_type:"login_success", ip:"172.16.0.8", anomaly_score:0.22, is_flagged:false, details:"Normal login", created_at:"2025-06-10T11:30:00" },
+    { id:6, event_type:"vote_cast", ip:"172.16.0.8", anomaly_score:0.18, is_flagged:false, details:"Transaction: e7b9a4f2...", created_at:"2025-06-10T11:32:45" },
+  ]
+};
+
+// Simulated SHA-256 display
+async function fakeSHA256(text) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  try {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch(e) {
+    return 'sha256:' + Math.random().toString(36).substr(2, 60);
+  }
+}
+
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
+
+function NavBar({ page, setPage }) {
+  const { user, logout } = useAuth();
+  return (
+    <nav>
+      <div className="nav-brand">
+        <div className="nav-logo">🗳️</div>
+        <div>
+          <div className="nav-title">E-Voting System</div>
+          <div className="nav-subtitle">Patan Multiple Campus · TU</div>
+        </div>
+      </div>
+      <div className="nav-links">
+        {!user && <>
+          <button className={`nav-btn ${page==='home'?'active':''}`} onClick={()=>setPage('home')}>Home</button>
+          <button className={`nav-btn ${page==='login'?'active':''}`} onClick={()=>setPage('login')}>Sign In</button>
+          <button className={`nav-btn ${page==='register'?'active':''}`} onClick={()=>setPage('register')}>Register</button>
+        </>}
+        {user && user.role !== 'admin' && <>
+          <button className={`nav-btn ${page==='vote'?'active':''}`} onClick={()=>setPage('vote')}>Cast Vote</button>
+          <button className="nav-btn danger" onClick={logout}>Sign Out</button>
+        </>}
+        {user && user.role === 'admin' && <>
+          <button className={`nav-btn ${page==='dashboard'?'active':''}`} onClick={()=>setPage('dashboard')}>Dashboard</button>
+          <button className={`nav-btn ${page==='elections'?'active':''}`} onClick={()=>setPage('elections')}>Elections</button>
+          <button className={`nav-btn ${page==='voters'?'active':''}`} onClick={()=>setPage('voters')}>Voters</button>
+          <button className={`nav-btn ${page==='audit'?'active':''}`} onClick={()=>setPage('audit')}>Audit Logs</button>
+          <button className="nav-btn danger" onClick={logout}>Sign Out</button>
+        </>}
+      </div>
+    </nav>
+  );
+}
+
+// ─── LANDING PAGE ──────────────────────────────────────────────────────────────
+function LandingPage({ setPage }) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+      setCurrentDate(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  return (
+    <div className="hero">
+      <div className="hero-text">
+        <div className="hero-badge"><span></span>Secure Digital Voting</div>
+        <h1>Democracy for the<br/><em>Digital</em> Campus</h1>
+        <p>A cryptographically secure e-voting platform designed specifically for Patan Multiple Campus. Every vote is encrypted, every identity verified, every anomaly detected.</p>
+        <div className="hero-actions">
+          <button className="btn-primary" onClick={()=>setPage('login')}>
+            🗳️ Cast Your Vote
+          </button>
+          <button className="btn-secondary" onClick={()=>setPage('register')}>
+            Register as Voter
+          </button>
+        </div>
+        <div style={{marginTop:'2rem', display:'flex', gap:'8px', flexWrap:'wrap'}}>
+          {['SHA-256','RSA-2048','Isolation Forest','JWT + OTP'].map(t=>(
+            <span key={t} className="algo-badge">⚙ {t}</span>
+          ))}
+        </div>
+      </div>
+      <div className="live-election-update">
+        <div className="live-election-title">
+          <div className="live-dot"></div>
+          Live Election Update
+        </div>
+        <div className="live-datetime">
+          <div className="live-date-text">Current Date & Time</div>
+          <div className="live-time">{formatTime(currentTime)}</div>
+          <div style={{fontSize:'11px', color:'rgba(255,255,255,0.4)', marginTop:'6px', letterSpacing:'0.5px'}}>{formatDate(currentDate)}</div>
+        </div>
+        <div className="election-stat">
+          <div className="stat-name">Votes Cast</div>
+          <div className="stat-num">47</div>
+        </div>
+        <div className="election-stat">
+          <div className="stat-name">Candidates</div>
+          <div className="stat-num">4</div>
+        </div>
+        <div className="election-stat">
+          <div className="stat-name">Voters</div>
+          <div className="stat-num">50</div>
+        </div>
+        <div className="election-stat">
+          <div className="stat-name">Anomalies</div>
+          <div className="stat-num">0</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
+function LoginPage({ setPage }) {
+  const { login } = useAuth();
+  const [form, setForm] = useState({ student_id:'', password:'', otp:'' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hashPreview, setHashPreview] = useState('');
+
+  const updateField = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const handleIDChange = async (val) => {
+    updateField('student_id', val);
+    if(val.length >= 4) {
+      const h = await fakeSHA256(val);
+      setHashPreview(h.substring(0,32)+'...');
+    } else { setHashPreview(''); }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    await new Promise(r=>setTimeout(r,900));
+
+    // Check admin
+    const admin = MOCK.admins.find(a=>a.student_id===form.student_id && a.password===form.password);
+    if(admin && (form.otp===admin.otp || form.otp==='000000')) {
+      login('mock-admin-jwt', { ...admin, role:'admin' });
+      setLoading(false); return;
+    }
+
+    const voter = MOCK.voters.find(v=>v.student_id===form.student_id && v.password===form.password);
+    if(!voter) { setError('Invalid Student ID or password.'); setLoading(false); return; }
+    if(form.otp !== voter.otp && form.otp !== '123456') { setError('Invalid OTP token. Check your authenticator app.'); setLoading(false); return; }
+
+    login('mock-voter-jwt', { ...voter, role:'voter' });
+    setLoading(false);
+  };
+
+  return (
+    <div className="page-sm">
+      <div className="card">
+        <div className="card-title">Sign In</div>
+        <div className="card-subtitle">Enter your Student ID, password, and OTP to access the voting portal.</div>
+
+        {error && <div className="alert alert-error">⚠ {error}</div>}
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Student ID / National ID</label>
+            <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>handleIDChange(e.target.value)} required />
+            {hashPreview && <div className="form-hint" style={{fontFamily:'JetBrains Mono',fontSize:'10px',color:'var(--gold-dark)'}}>SHA-256: {hashPreview}</div>}
+            <div className="form-hint">Your ID is immediately hashed — never stored in plain text.</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input className="form-input" type="password" placeholder="Enter your password" value={form.password} onChange={e=>updateField('password',e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">OTP Token</label>
+            <input className="form-input mono" placeholder="6-digit OTP" maxLength={6} value={form.otp} onChange={e=>updateField('otp',e.target.value)} required />
+            <div className="form-hint">Open your authenticator app for the current token.</div>
+          </div>
+          <button className="btn-full btn-gold" disabled={loading}>
+            {loading ? <><div className="spinner spinner-dark"></div> Verifying Identity...</> : '🗳️ Sign In & Vote'}
+          </button>
+        </form>
+
+        <div className="divider">Demo Credentials</div>
+        <div style={{background:'var(--paper)', borderRadius:'10px', padding:'14px', fontSize:'12px', fontFamily:'JetBrains Mono'}}>
+          <div style={{marginBottom:'6px', color:'var(--muted)', fontFamily:'DM Sans', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px'}}>Voter</div>
+          <div>ID: <strong>79010020</strong> · Pass: <strong>Pass@123</strong> · OTP: <strong>123456</strong></div>
+          <div style={{marginTop:'8px', marginBottom:'6px', color:'var(--muted)', fontFamily:'DM Sans', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px'}}>Admin</div>
+          <div>ID: <strong>ADMIN001</strong> · Pass: <strong>Admin@123</strong> · OTP: <strong>000000</strong></div>
+        </div>
+
+        <div style={{textAlign:'center', marginTop:'1.25rem', fontSize:'13px', color:'var(--muted)'}}>
+          Not registered? <button style={{background:'none',border:'none',color:'var(--gold-dark)',fontWeight:600,cursor:'pointer',fontFamily:'DM Sans'}} onClick={()=>setPage('register')}>Create Account</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── REGISTER PAGE ────────────────────────────────────────────────────────────
+function RegisterPage({ setPage }) {
+  const [form, setForm] = useState({ student_id:'', password:'', name:'', email:'' });
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    await new Promise(r=>setTimeout(r,1200));
+    const otp = Math.floor(100000+Math.random()*900000).toString();
+    setDone({ otp, name: form.name });
+    setLoading(false);
+  };
+
+  if(done) return (
+    <div className="page-sm">
+      <div className="card">
+        <div style={{textAlign:'center', marginBottom:'1.5rem'}}>
+          <div style={{fontSize:'2.5rem', marginBottom:'8px'}}>✅</div>
+          <div className="card-title" style={{fontSize:'1.5rem'}}>Registration Successful!</div>
+          <div className="card-subtitle">Welcome, {done.name}. Save your OTP secret below.</div>
+        </div>
+        <div className="alert alert-info">Your Student ID has been hashed with SHA-256 + salt and stored securely.</div>
+        <div className="otp-box">
+          <div className="otp-label">Your Current OTP Token</div>
+          <div className="otp-code">{done.otp}</div>
+          <div className="otp-note">Use this in your authenticator app. Refreshes every 30 seconds.</div>
+        </div>
+        <button className="btn-full" style={{marginTop:'1rem'}} onClick={()=>setPage('login')}>Proceed to Sign In →</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page-sm">
+      <div className="card">
+        <div className="card-title">Register to Vote</div>
+        <div className="card-subtitle">Create your voter account. Your Student ID will be cryptographically hashed for security.</div>
+        {error && <div className="alert alert-error">⚠ {error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Full Name</label>
+            <input className="form-input" placeholder="Your full name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Student ID / National ID</label>
+            <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>setForm(f=>({...f,student_id:e.target.value}))} required />
+            <div className="form-hint">Will be SHA-256 hashed with a unique random salt immediately.</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Campus Email</label>
+            <input className="form-input" type="email" placeholder="you@pmc.edu.np" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input className="form-input" type="password" placeholder="Choose a strong password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} required />
+          </div>
+          <button className="btn-full btn-gold" disabled={loading}>
+            {loading ? <><div className="spinner spinner-dark"></div> Creating Account...</> : 'Create Voter Account'}
+          </button>
+        </form>
+        <div style={{textAlign:'center', marginTop:'1.25rem', fontSize:'13px', color:'var(--muted)'}}>
+          Already registered? <button style={{background:'none',border:'none',color:'var(--gold-dark)',fontWeight:600,cursor:'pointer',fontFamily:'DM Sans'}} onClick={()=>setPage('login')}>Sign In</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── VOTE PAGE ────────────────────────────────────────────────────────────────
+function VotePage() {
+  const { user, updateUser } = useAuth();
+  const [selectedByPosition, setSelectedByPosition] = useState({});
+  const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const [encryptedPreview, setEncryptedPreview] = useState('');
+
+  const election = MOCK.elections[0];
+  const candidates = MOCK.candidates.filter(c=>c.election_id===1);
+  
+  // Group candidates by position
+  const groupedByPosition = candidates.reduce((acc, c) => {
+    if(!acc[c.position]) acc[c.position] = [];
+    acc[c.position].push(c);
+    return acc;
+  }, {});
+
+  const handleSelect = (candidate) => { 
+    if(!user.has_voted) {
+      setSelectedByPosition(prev => ({
+        ...prev,
+        [candidate.position]: candidate.id === prev[candidate.position] ? null : candidate.id
+      }));
+    }
+  };
+
+  const allPositionsFilled = Object.keys(groupedByPosition).length > 0 && 
+                             Object.keys(groupedByPosition).every(pos => selectedByPosition[pos]);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    await new Promise(r=>setTimeout(r,400));
+    const selectedCandidates = Object.entries(selectedByPosition).map(([pos, candidateId]) => {
+      return candidates.find(c => c.id === candidateId);
+    });
+    const enc = btoa(`candidates=${selectedCandidates.map(c=>c.id).join(',')}|voter_hash=${Math.random().toString(36)}`);
+    setEncryptedPreview(enc.substring(0,40)+'...');
+    await new Promise(r=>setTimeout(r,800));
+    await new Promise(r=>setTimeout(r,500));
+    const txHash = await fakeSHA256(`${Object.values(selectedByPosition).join(',')}|${Date.now()}`);
+    setDone({ txHash, candidates: selectedCandidates });
+    updateUser({ has_voted: true });
+    setLoading(false);
+    setConfirming(false);
+  };
+
+  if(user.has_voted && !done) return (
+    <div className="page">
+      <div className="success-screen">
+        <div className="success-icon">✓</div>
+        <h2>Vote Already Cast</h2>
+        <p style={{color:'var(--muted)', marginBottom:'1rem'}}>You have already cast your votes in this election. Your votes have been securely recorded.</p>
+        <div className="alert alert-info">One-ID-One-Vote principle enforced. Your Student ID hash has been marked as voted.</div>
+      </div>
+    </div>
+  );
+
+  if(done) return (
+    <div className="page">
+      <div className="success-screen">
+        <div className="success-icon">✓</div>
+        <h2>Votes Cast Successfully!</h2>
+        <p style={{color:'var(--muted)'}}>Your encrypted votes have been recorded. Thank you for participating in the democratic process.</p>
+        <div className="tx-hash">
+          <strong>Transaction Hash (SHA-256 Integrity Seal)</strong>
+          {done.txHash}
+        </div>
+        <div className="enc-indicator">
+          <div className="enc-dot"></div>
+          Votes encrypted with RSA-2048 · Anomaly detection: CLEAR · Status: Recorded
+        </div>
+        <div style={{marginTop:'1rem', padding:'1rem', background:'var(--paper)', borderRadius:'10px', textAlign:'left'}}>
+          <div style={{fontSize:'12px', color:'var(--muted)', marginBottom:'8px'}}>You voted for</div>
+          {done.candidates.map((candidate, idx) => (
+            <div key={idx} style={{marginBottom: idx < done.candidates.length - 1 ? '10px' : '0'}}>
+              <div style={{fontWeight:600}}>{candidate.full_name}</div>
+              <div style={{fontSize:'12px', color:'var(--gold-dark)'}}>{candidate.position} · {candidate.department}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page">
+      <div className="ballot-header">
+        <h2>🗳️ {election.title}</h2>
+        <p>{election.description}</p>
+        <div className="ballot-timer">⏱ Voting closes: {new Date(election.end_time).toLocaleDateString('en-NP', {year:'numeric',month:'long',day:'numeric'})}</div>
+      </div>
+
+      {Object.entries(groupedByPosition).map(([position, positionCandidates]) => (
+        <div key={position} style={{marginBottom:'2.5rem'}}>
+          <div style={{marginBottom:'1.5rem'}}>
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.75rem'}}>
+              <div>
+                <div className="section-title">Vote for {position}</div>
+                <div className="section-sub">Choose one candidate for this position. Your votes will be RSA-encrypted before submission.</div>
+              </div>
+              {selectedByPosition[position] && <div className="enc-indicator" style={{padding:'6px 12px'}}>
+                <div className="enc-dot"></div> Selected
+              </div>}
+            </div>
+          </div>
+
+          <div className="candidates-grid">
+            {positionCandidates.map(c=>(
+              <div key={c.id} className={`candidate-card ${selectedByPosition[position]===c.id?'selected':''}`} onClick={()=>handleSelect(c)}>
+                {selectedByPosition[position]===c.id && <div className="selected-check">✓</div>}
+                <div className="candidate-avatar">{c.full_name[0]}</div>
+                <div className="candidate-name">{c.full_name}</div>
+                <div className="candidate-pos">{c.position}</div>
+                <div className="candidate-dept">{c.department} · {c.year}</div>
+                {c.manifesto && <div className="candidate-manifesto">{c.manifesto}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {allPositionsFilled && (
+        <div style={{position:'fixed', bottom:'2rem', right:'2rem', zIndex:50}}>
+          <button className="btn-primary" style={{boxShadow:'0 8px 32px rgba(201,168,76,0.4)'}} onClick={()=>setConfirming(true)}>
+            🔒 Confirm & Encrypt Votes
+          </button>
+        </div>
+      )}
+
+      {confirming && (
+        <div className="modal-overlay" onClick={()=>!loading&&setConfirming(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <h3>Confirm Your Votes</h3>
+            <p style={{color:'var(--muted)', fontSize:'14px', marginBottom:'1.5rem'}}>
+              Please review your selections below. This action cannot be undone.
+            </p>
+            <div style={{background:'var(--paper)', borderRadius:'10px', padding:'14px', marginBottom:'1.5rem'}}>
+              {Object.entries(selectedByPosition).map(([position, candidateId]) => {
+                const candidate = candidates.find(c => c.id === candidateId);
+                return (
+                  <div key={position} style={{display:'flex', gap:'14px', alignItems:'center', marginBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '12px' : '0', paddingBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '12px' : '0', borderBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '1px solid rgba(0,0,0,0.1)' : 'none'}}>
+                    <div className="candidate-avatar" style={{width:'44px',height:'44px',fontSize:'1.1rem'}}>{candidate.full_name[0]}</div>
+                    <div>
+                      <div style={{fontWeight:600}}>{candidate.full_name}</div>
+                      <div style={{fontSize:'12px', color:'var(--gold-dark)'}}>{candidate.position} · {candidate.department}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {encryptedPreview && <div style={{fontFamily:'JetBrains Mono',fontSize:'10px',background:'#f0fdf4',border:'1px solid #a7f3d0',borderRadius:'6px',padding:'8px',marginBottom:'1rem',color:'var(--emerald)',wordBreak:'break-all'}}>
+              🔒 RSA Encrypted: {encryptedPreview}
+            </div>}
+            <div className="enc-indicator" style={{marginBottom:'1.5rem'}}>
+              <div className="enc-dot"></div> Votes will be encrypted with RSA-2048 before transmission
+            </div>
+            <div style={{display:'flex', gap:'10px'}}>
+              <button className="btn-full" onClick={handleConfirm} disabled={loading}>
+                {loading ? <><div className="spinner"></div> Encrypting & Submitting...</> : '✓ Cast My Votes'}
+              </button>
+              <button className="btn-full" style={{background:'transparent',color:'var(--ink)',border:'1.5px solid var(--border)'}} onClick={()=>setConfirming(false)} disabled={loading}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
+function AdminDashboard() {
+  const totalVoters = MOCK.voters.length + 47;
+  const voted = 47;
+  const turnout = Math.round((voted/totalVoters)*100);
+  const flagged = MOCK.auditLogs.filter(l=>l.is_flagged).length;
+
+  return (
+    <div className="page">
+      <div style={{marginBottom:'2rem'}}>
+        <div className="section-title">Admin Dashboard</div>
+        <div className="section-sub">Real-time monitoring of election health and voter turnout.</div>
+      </div>
+
+      <div className="dash-grid">
+        <div className="stat-card gold">
+          <div className="stat-label">Registered Voters</div>
+          <div className="stat-value">{totalVoters}</div>
+          <div className="stat-sub">Eligible participants</div>
+        </div>
+        <div className="stat-card emerald">
+          <div className="stat-label">Votes Cast</div>
+          <div className="stat-value">{voted}</div>
+          <div className="stat-sub" style={{color:'var(--emerald)'}}>{turnout}% turnout</div>
+          <div className="progress-track"><div className="progress-fill" style={{width:`${turnout}%`}}></div></div>
+        </div>
+        <div className="stat-card crimson">
+          <div className="stat-label">Flagged Events</div>
+          <div className="stat-value" style={{color: flagged>0 ? 'var(--crimson)' : 'inherit'}}>{flagged}</div>
+          <div className="stat-sub">Anomaly alerts</div>
+        </div>
+        <div className="stat-card sky">
+          <div className="stat-label">Active Elections</div>
+          <div className="stat-value">1</div>
+          <div className="stat-sub" style={{color:'var(--emerald)'}}>● Live now</div>
+        </div>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+        <div className="card">
+          <div className="section-header">
+            <div>
+              <div className="section-title" style={{fontSize:'1.1rem'}}>Live Turnout</div>
+            </div>
+          </div>
+          {['President','Vice President'].map((pos,i)=>{
+            const posCands = MOCK.candidates.filter(c=>c.position===pos);
+            const total = posCands.reduce((s,c)=>s+c.votes,0);
+            return <div key={pos} style={{marginBottom:'1.25rem'}}>
+              <div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{pos}</div>
+              {posCands.map((c,j)=>(
+                <div key={c.id} className="result-row" style={{padding:'8px 0'}}>
+                  <div className="result-rank" style={{fontSize:'1rem'}}>#{j+1}</div>
+                  <div className="result-bar-wrap">
+                    <div className="result-name" style={{fontSize:'13px'}}>{c.full_name} <span className="tag">{c.department}</span></div>
+                    <div className="result-bar-track">
+                      <div className="result-bar-fill" style={{width:`${total>0?(c.votes/total*100):0}%`}}></div>
+                    </div>
+                  </div>
+                  <div className="result-votes">{c.votes}</div>
+                </div>
+              ))}
+            </div>;
+          })}
+        </div>
+
+        <div className="card">
+          <div className="section-header">
+            <div>
+              <div className="section-title" style={{fontSize:'1.1rem'}}>Recent Audit Events</div>
+            </div>
+          </div>
+          <div>
+            {MOCK.auditLogs.slice(0,5).map(log=>(
+              <div key={log.id} style={{display:'flex', alignItems:'center', gap:'10px', padding:'10px 0', borderBottom:'1px solid var(--border)'}}>
+                <span style={{fontSize:'16px'}}>{log.event_type.includes('fail')?'⚠':log.is_flagged?'🚨':'✓'}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:'13px',fontWeight:500}}>{log.event_type.replace('_',' ')}</div>
+                  <div style={{fontSize:'11px',color:'var(--muted)'}}>{log.ip} · {new Date(log.created_at).toLocaleTimeString()}</div>
+                </div>
+                <div>
+                  <span className={`flag-badge ${log.is_flagged?'flag-yes':'flag-no'}`}>
+                    {log.is_flagged?'Flagged':'Normal'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN ELECTIONS ──────────────────────────────────────────────────────────
+function AdminElections() {
+  const [showModal, setShowModal] = useState(false);
+  const [showCands, setShowCands] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [newElection, setNewElection] = useState({title:'',description:'',start:'',end:''});
+  const [newCand, setNewCand] = useState({name:'',position:'',dept:'',year:'',manifesto:''});
+
+  const totalVotes = MOCK.candidates.reduce((s,c)=>s+c.votes,0);
+
+  return (
+    <div className="page">
+      <div className="section-header">
+        <div>
+          <div className="section-title">Election Management</div>
+          <div className="section-sub">Configure, manage, and publish election results.</div>
+        </div>
+        <button className="btn-primary" onClick={()=>setShowModal(true)}>+ New Election</button>
+      </div>
+
+      {MOCK.elections.map(e=>(
+        <div key={e.id} className="card" style={{marginBottom:'1.5rem'}}>
+          <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'1rem'}}>
+            <div>
+              <div style={{fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', fontWeight:700, marginBottom:'6px'}}>{e.title}</div>
+              <div style={{fontSize:'13px', color:'var(--muted)', marginBottom:'10px'}}>{e.description}</div>
+              <span className={`election-status ${e.status==='active'?'status-active':'status-upcoming'}`}>
+                {e.status==='active' && <span className="dot"></span>}{e.status.toUpperCase()}
+              </span>
+            </div>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:'2rem', fontWeight:700, fontFamily:"'Playfair Display',serif"}}>{e.total_votes}</div>
+              <div style={{fontSize:'12px', color:'var(--muted)'}}>total votes</div>
+            </div>
+          </div>
+
+          <div style={{display:'flex', gap:'8px', flexWrap:'wrap'}}>
+            <button className="btn-sm blue" onClick={()=>setShowCands(true)}>👥 Manage Candidates</button>
+            <button className="btn-sm green" onClick={()=>setShowResults(true)}>📊 View Results</button>
+            {e.status==='active' && <button className="btn-sm red">⏹ Close Election</button>}
+            {e.status==='upcoming' && <button className="btn-sm green">▶ Activate</button>}
+          </div>
+        </div>
+      ))}
+
+      {/* New Election Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={()=>setShowModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <h3>Create New Election</h3>
+            <div className="modal-form">
+              <div className="form-group">
+                <label className="form-label">Election Title</label>
+                <input className="form-input" placeholder="e.g. Student Council Election 2082" value={newElection.title} onChange={e=>setNewElection(f=>({...f,title:e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea className="form-input" rows={3} placeholder="Brief description..." style={{resize:'vertical'}} value={newElection.description} onChange={e=>setNewElection(f=>({...f,description:e.target.value}))} />
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
+                <div className="form-group">
+                  <label className="form-label">Start Date & Time</label>
+                  <input className="form-input" type="datetime-local" value={newElection.start} onChange={e=>setNewElection(f=>({...f,start:e.target.value}))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">End Date & Time</label>
+                  <input className="form-input" type="datetime-local" value={newElection.end} onChange={e=>setNewElection(f=>({...f,end:e.target.value}))} />
+                </div>
+              </div>
+              <div className="alert alert-info">RSA-2048 key pair will be automatically generated for this election.</div>
+              <div style={{display:'flex', gap:'10px'}}>
+                <button className="btn-full btn-gold" onClick={()=>setShowModal(false)}>Create Election</button>
+                <button className="btn-full" style={{background:'transparent',color:'var(--ink)',border:'1.5px solid var(--border)'}} onClick={()=>setShowModal(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidates Modal */}
+      {showCands && (
+        <div className="modal-overlay" onClick={()=>setShowCands(false)}>
+          <div className="modal" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
+            <h3>Manage Candidates</h3>
+            <div className="table-wrap" style={{marginBottom:'1.5rem'}}>
+              <table>
+                <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Action</th></tr></thead>
+                <tbody>
+                  {MOCK.candidates.map(c=>(
+                    <tr key={c.id}>
+                      <td><strong>{c.full_name}</strong></td>
+                      <td>{c.position}</td>
+                      <td><span className="tag">{c.department}</span></td>
+                      <td><button className="btn-sm red">Remove</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{background:'var(--paper)',borderRadius:'10px',padding:'14px'}}>
+              <div style={{fontSize:'13px',fontWeight:600,marginBottom:'10px'}}>Add Candidate</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+                <input className="form-input" placeholder="Full Name" value={newCand.name} onChange={e=>setNewCand(f=>({...f,name:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
+                <input className="form-input" placeholder="Position" value={newCand.position} onChange={e=>setNewCand(f=>({...f,position:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
+                <input className="form-input" placeholder="Department" value={newCand.dept} onChange={e=>setNewCand(f=>({...f,dept:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
+                <input className="form-input" placeholder="Year" value={newCand.year} onChange={e=>setNewCand(f=>({...f,year:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
+                <textarea className="form-input" placeholder="Manifesto..." rows={2} style={{gridColumn:'span 2',fontSize:'13px',padding:'8px 12px',resize:'none'}} value={newCand.manifesto} onChange={e=>setNewCand(f=>({...f,manifesto:e.target.value}))} />
+                <button className="btn-full btn-gold" style={{gridColumn:'span 2',padding:'10px'}} onClick={()=>setShowCands(false)}>Add Candidate</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results Modal */}
+      {showResults && (
+        <div className="modal-overlay" onClick={()=>setShowResults(false)}>
+          <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
+            <h3>Election Results</h3>
+            <div className="alert alert-info" style={{marginBottom:'1rem'}}>Results decrypted using RSA private key. Each vote individually decrypted.</div>
+            {['President','Vice President'].map(pos=>{
+              const cands = MOCK.candidates.filter(c=>c.position===pos).sort((a,b)=>b.votes-a.votes);
+              const max = Math.max(...cands.map(c=>c.votes));
+              return <div key={pos} style={{marginBottom:'1.5rem'}}>
+                <div style={{fontSize:'12px',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'8px'}}>{pos}</div>
+                {cands.map((c,i)=>(
+                  <div key={c.id} className="result-row">
+                    <div className="result-rank">{i===0?'🥇':i===1?'🥈':'🥉'}</div>
+                    <div className="result-bar-wrap">
+                      <div className="result-name">{c.full_name} <span className="tag">{c.department}</span></div>
+                      <div className="result-bar-track"><div className="result-bar-fill" style={{width:`${max>0?(c.votes/max*100):0}%`}}></div></div>
+                    </div>
+                    <div className="result-votes">{c.votes} votes</div>
+                  </div>
+                ))}
+              </div>;
+            })}
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:'12px',fontSize:'13px',color:'var(--muted)',display:'flex',justifyContent:'space-between'}}>
+              <span>Total Votes: <strong>{totalVotes}</strong></span>
+              <span>Decryption Errors: <strong>0</strong></span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ADMIN VOTERS ─────────────────────────────────────────────────────────────
+function AdminVoters() {
+  const allVoters = [
+    ...MOCK.voters,
+    { id:4, student_id:"79010***", name:"Kabita Shrestha", email:"kabita@pmc.edu.np", has_voted:true },
+    { id:5, student_id:"79010***", name:"Suman Tamang", email:"suman@pmc.edu.np", has_voted:true },
+    { id:6, student_id:"79010***", name:"Nirmala Gurung", email:"nirmala@pmc.edu.np", has_voted:false },
+  ];
+
+  return (
+    <div className="page">
+      <div className="section-header">
+        <div>
+          <div className="section-title">Voter Management</div>
+          <div className="section-sub">All registered voters. Student IDs are stored as SHA-256 hashes only.</div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>Email</th>
+                <th>Student ID (Hashed)</th>
+                <th>Vote Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allVoters.map(v=>(
+                <tr key={v.id}>
+                  <td style={{color:'var(--muted)'}}>{v.id}</td>
+                  <td><strong>{v.name || v.full_name}</strong></td>
+                  <td style={{color:'var(--muted)'}}>{v.email}</td>
+                  <td><span style={{fontFamily:'JetBrains Mono',fontSize:'11px',color:'var(--muted)'}}>sha256:a3f8...{v.id.toString().padStart(4,'0')}</span></td>
+                  <td>
+                    <span className={`flag-badge ${v.has_voted?'flag-yes':'flag-no'}`}>
+                      {v.has_voted ? '✓ Voted' : '○ Pending'}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="btn-sm red">Deactivate</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN AUDIT LOGS ─────────────────────────────────────────────────────────
+function AdminAuditLogs() {
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const logs = flaggedOnly ? MOCK.auditLogs.filter(l=>l.is_flagged) : MOCK.auditLogs;
+
+  const scoreColor = (s) => s >= 0.7 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
+
+  return (
+    <div className="page">
+      <div className="section-header">
+        <div>
+          <div className="section-title">Audit Logs</div>
+          <div className="section-sub">Isolation Forest anomaly detection results. Real-time fraud monitoring.</div>
+        </div>
+        <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+          <label style={{fontSize:'13px',color:'var(--muted)',display:'flex',gap:'6px',alignItems:'center',cursor:'pointer'}}>
+            <input type="checkbox" checked={flaggedOnly} onChange={e=>setFlaggedOnly(e.target.checked)} />
+            Flagged only
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:'1rem', background:'var(--ink)', color:'#fff'}}>
+        <div style={{display:'flex', gap:'24px', flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Algorithm</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>Isolation Forest</div>
+          </div>
+          <div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Score Formula</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>s(x,n) = 2^(-E(h(x))/c(n))</div>
+          </div>
+          <div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Threshold</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>≥ 0.70 → Flagged</div>
+          </div>
+          <div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Flagged Events</div>
+            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'#f87171'}}>{MOCK.auditLogs.filter(l=>l.is_flagged).length} / {MOCK.auditLogs.length}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>IP Address</th>
+                <th>Anomaly Score</th>
+                <th>Flag</th>
+                <th>Details</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(log=>(
+                <tr key={log.id}>
+                  <td>
+                    <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                      <span>{log.event_type.includes('fail')?'⚠️':log.is_flagged?'🚨':'✅'}</span>
+                      <span style={{fontWeight:500}}>{log.event_type.replace(/_/g,' ')}</span>
+                    </span>
+                  </td>
+                  <td><span style={{fontFamily:'JetBrains Mono',fontSize:'12px'}}>{log.ip_address}</span></td>
+                  <td>
+                    <div className="score-bar">
+                      <div className="score-track">
+                        <div className={`score-fill ${scoreColor(log.anomaly_score)}`} style={{width:`${log.anomaly_score*100}%`}}></div>
+                      </div>
+                      <span style={{fontFamily:'JetBrains Mono',fontSize:'12px',minWidth:'36px'}}>{log.anomaly_score?.toFixed(2)}</span>
+                    </div>
+                  </td>
+                  <td><span className={`flag-badge ${log.is_flagged?'flag-yes':'flag-no'}`}>{log.is_flagged?'Flagged':'Normal'}</span></td>
+                  <td style={{color:'var(--muted)',fontSize:'12px'}}>{log.details}</td>
+                  <td style={{color:'var(--muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{new Date(log.created_at).toLocaleTimeString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ROOT ─────────────────────────────────────────────────────────────────
+function App() {
+  const [user, setUser] = useState(null);
+  const [page, setPage] = useState('home');
+
+  const authValue = {
+    user,
+    login: (token, userData) => {
+      setUser(userData);
+      setPage(userData.role === 'admin' ? 'dashboard' : 'vote');
+    },
+    logout: () => {
+      setUser(null);
+      setPage('home');
+    },
+    updateUser: (updates) => setUser(u => ({...u, ...updates}))
+  };
+
+  const renderPage = () => {
+    if (!user) {
+      if (page === 'register') return <RegisterPage setPage={setPage} />;
+      if (page === 'login') return <LoginPage setPage={setPage} />;
+      return <LandingPage setPage={setPage} />;
+    }
+    if (user.role === 'voter') return <VotePage />;
+    if (page === 'dashboard') return <AdminDashboard />;
+    if (page === 'elections') return <AdminElections />;
+    if (page === 'voters') return <AdminVoters />;
+    if (page === 'audit') return <AdminAuditLogs />;
+    return <AdminDashboard />;
+  };
+
+  return (
+    <AuthCtx.Provider value={authValue}>
+      <div className="app">
+        <NavBar page={page} setPage={setPage} />
+        <main>{renderPage()}</main>
+        <footer style={{background:'var(--ink)',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'1.25rem 2rem',display:'flex',alignItems:'center',justifyContent:'center',flexWrap:'wrap',gap:'8px',flexDirection:'column'}}>
+          <div style={{color:'rgba(255,255,255,0.35)',fontSize:'12px'}}>
+            © 2082/83 E-Voting System · Patan Multiple Campus, Tribhuvan University
+          </div>
+          <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
+            {['SHA-256','RSA-2048','Isolation Forest'].map(t=>(
+              <span key={t} style={{fontFamily:'JetBrains Mono',fontSize:'10px',color:'rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.04)',padding:'2px 8px',borderRadius:'4px'}}>{t}</span>
+            ))}
+          </div>
+        </footer>
+      </div>
+    </AuthCtx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
