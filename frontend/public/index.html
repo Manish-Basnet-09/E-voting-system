@@ -819,7 +819,7 @@ function LoginPage({ setPage }) {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Student ID / National ID</label>
+            <label className="form-label">Student ID</label>
             <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>handleIDChange(e.target.value)} required />
             {hashPreview && <div className="form-hint" style={{fontFamily:'JetBrains Mono',fontSize:'10px',color:'var(--gold-dark)'}}>SHA-256: {hashPreview}</div>}
             <div className="form-hint">Your ID is immediately hashed — never stored in plain text.</div>
@@ -901,7 +901,7 @@ function RegisterPage({ setPage }) {
             <input className="form-input" placeholder="Your full name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} required />
           </div>
           <div className="form-group">
-            <label className="form-label">Student ID / National ID</label>
+            <label className="form-label">Student ID</label>
             <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>setForm(f=>({...f,student_id:e.target.value}))} required />
             <div className="form-hint">Will be SHA-256 hashed with a unique random salt immediately.</div>
           </div>
