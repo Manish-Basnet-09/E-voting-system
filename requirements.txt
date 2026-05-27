@@ -1,21 +1,41 @@
+# Web Framework & Server Core
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# Database & Migrations (Asynchronous Stack)
+sqlalchemy==2.0.30
+asyncpg
+alembic==1.13.1
+
+# Security, JWT Authentication & Passwords
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.9
-sqlalchemy==2.0.30
-alembic==1.13.1
-pydantic==2.7.1
-pydantic-settings==2.2.1
 cryptography==42.0.7
-scikit-learn==1.5.0
-numpy==1.26.4
-pandas==2.2.2
+
+# Two-Factor Authentication (2FA) & QR Engine
 pyotp==2.9.0
 qrcode[pil]==7.4.2
 Pillow==10.3.0
+
+# Asynchronous Email Delivery System
+fastapi-mail
+
+# Data Validation & Configuration Management
+pydantic==2.7.1
+pydantic[email]
+pydantic-settings==2.2.1
 python-dotenv==1.0.1
+
+# Machine Learning & Text Analytics Utilities
+scikit-learn==1.5.0
+numpy==1.26.4
+pandas==2.2.2
+
+# Utilities & Networking Operations
 aiofiles==23.2.1
 httpx==0.27.0
+
+# Testing Frameworks
 pytest==8.2.0
 pytest-asyncio==0.23.6

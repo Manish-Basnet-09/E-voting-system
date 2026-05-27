@@ -1,25 +1,43 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 from .config import settings
 
-engine = create_engine(
+# 1. Create the Async Engine (Optimized for asynchronous PostgreSQL)
+# We drop check_same_thread because Postgres handles multi-threading natively
+engine = create_async_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
+    echo=False,
+    pool_size=10,
+    max_overflow=20
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# 2. Create the Async Session Factory
+AsyncSessionLocal = async_sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
+# 3. Maintain your declarative base layer
 Base = declarative_base()
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# 4. Asynchronous Database Session Dependency for your API routers
+async def get_db():
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
 
 
-def create_tables():
+# 5. Asynchronous Table Creation Tool
+async def create_tables():
+    # Keep your exact conditional models import intact
     from .models import user, election, candidate, vote  # noqa: F401
-    Base.metadata.create_all(bind=engine)
+    
+    # Bridge the async connection to create tables synchronously via metadata
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

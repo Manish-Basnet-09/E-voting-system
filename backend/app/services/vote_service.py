@@ -1,5 +1,7 @@
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.sql import func
 from typing import Optional
 
 from ..models.vote import Vote, AuditLog
@@ -11,9 +13,9 @@ from ..utils.hashing import generate_transaction_hash
 from ..ml.anomaly_detector import detector
 
 
-def cast_vote(
-    db: Session,
-    voter: User,
+async def cast_vote(
+    db: AsyncSession,
+    voter: User,  # Receives pre-locked instance cleanly from the caller route
     election_id: int,
     encrypted_vote: str,
     ip_address: str,
@@ -22,37 +24,34 @@ def cast_vote(
     session_duration: float,
 ) -> dict:
     """
-    Cast an encrypted vote after all validations.
-    
-    Flow:
-    1. Check election is active
-    2. Check voter hasn't voted (One-ID-One-Vote)
-    3. Run anomaly detection
-    4. Store encrypted vote + transaction hash
-    5. Update voter status
+    Validates and queues state data mutations for a vote casting event.
+    ⚠️ Relies entirely on the calling router context to commit the transaction.
     """
-    # Check election status
-    election = db.query(Election).filter(
-        Election.id == election_id,
-        Election.status == ElectionStatus.active
-    ).first()
-    if not election:
-        raise ValueError("Election is not currently active.")
+    
+    if not voter:
+        raise ValueError("Voter identification profile not found in active database session.")
 
-    # One-ID-One-Vote enforcement
+    # Strict Double-Voting enforcement check against live database state
     if voter.has_voted:
         raise ValueError("You have already cast your vote in this election.")
 
-    # Check if this voter already has a vote record
-    existing_vote = db.query(Vote).filter(
-        Vote.election_id == election_id,
-        Vote.voter_id_hash == voter.student_id_hash
-    ).first()
-    if existing_vote:
-        raise ValueError("A vote has already been recorded for this ID.")
+    # Check election status asynchronously and apply row lock
+    elec_result = await db.execute(
+        select(Election).filter(
+            Election.id == election_id,
+            Election.status == ElectionStatus.active
+        ).with_for_update()
+    )
+    election = elec_result.scalars().first()
+    if not election:
+        raise ValueError("Election is not currently active.")
 
-    # Run anomaly detection
-    votes_from_ip = db.query(Vote).filter(Vote.ip_address == ip_address).count()
+    # Gather data points for Machine Learning Fraud Vector Model
+    ip_count_result = await db.execute(
+        select(func.count(Vote.id)).filter(Vote.ip_address == ip_address)
+    )
+    votes_from_ip = ip_count_result.scalar_one_or_none() or 0
+    
     features = detector.extract_features(
         ip_address=ip_address,
         user_agent=user_agent or "",
@@ -64,16 +63,15 @@ def cast_vote(
     is_flagged, anomaly_score = detector.is_anomalous(features)
     detector.add_training_sample(features)
 
-    # Generate transaction hash (digital seal for this vote)
+    # Generate transaction hash (Digital seal containing timestamp and ciphertext)
     timestamp = datetime.utcnow().isoformat()
     transaction_hash = generate_transaction_hash(
-        voter.student_id_hash, election_id, encrypted_vote, timestamp
+        election_id, encrypted_vote, timestamp
     )
 
-    # Store the vote (anonymized — only hash, not student ID)
+    # Drop the vote into the database (100% Anonymized)
     vote = Vote(
         election_id=election_id,
-        voter_id_hash=voter.student_id_hash,
         encrypted_vote=encrypted_vote,
         transaction_hash=transaction_hash,
         ip_address=ip_address,
@@ -81,24 +79,28 @@ def cast_vote(
     )
     db.add(vote)
 
-    # Update voter status (One-ID-One-Vote enforcement)
+    # Update in-memory worker object state layout
     voter.has_voted = True
+    db.add(voter)
 
-    # Update election vote count
+    # Increment public non-identifiable counter 
     election.total_votes += 1
+    db.add(election)
 
-    # Log the audit event
+    # Log the security footprint trace without storing voter identity metrics
     audit = AuditLog(
         event_type="vote_cast",
-        voter_id_hash=voter.student_id_hash,
+        voter_id_hash=None, 
         ip_address=ip_address,
         user_agent=user_agent,
         anomaly_score=anomaly_score,
         is_flagged=is_flagged,
-        details=f"Transaction: {transaction_hash[:16]}..."
+        details=f"Transaction Seal: {transaction_hash[:16]}..."
     )
     db.add(audit)
-    db.commit()
+    
+    # 🌟 Push down staged model updates to pipeline without terminating context
+    await db.flush()
 
     return {
         "success": True,
@@ -109,15 +111,16 @@ def cast_vote(
     }
 
 
-def tabulate_results(db: Session, election_id: int, private_key_pem: str) -> dict:
+async def tabulate_results(db: AsyncSession, election_id: int, private_key_pem: str) -> dict:
     """
-    Decrypt and tally all votes for an election.
-    Uses RSA private key for decryption.
+    Decrypt and tally all votes for an election at close phase.
     """
-    votes = db.query(Vote).filter(Vote.election_id == election_id).all()
-    candidates = db.query(Candidate).filter(Candidate.election_id == election_id).all()
+    vote_result = await db.execute(select(Vote).filter(Vote.election_id == election_id))
+    votes = vote_result.scalars().all()
     
-    # Reset counts
+    cand_result = await db.execute(select(Candidate).filter(Candidate.election_id == election_id))
+    candidates = cand_result.scalars().all()
+    
     counts = {str(c.id): 0 for c in candidates}
 
     errors = 0
@@ -132,10 +135,11 @@ def tabulate_results(db: Session, election_id: int, private_key_pem: str) -> dic
         except Exception:
             errors += 1
 
-    # Update candidate vote counts
     for candidate in candidates:
         candidate.vote_count = counts.get(str(candidate.id), 0)
-    db.commit()
+        db.add(candidate)
+        
+    await db.flush()
 
     results = []
     for c in sorted(candidates, key=lambda x: -x.vote_count):

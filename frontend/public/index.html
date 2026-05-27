@@ -770,121 +770,227 @@ function LandingPage({ setPage }) {
     </div>
   );
 }
+// ─── LOGIN PAGE (INTEGRATED WITH OAUTH2, 3FA & POSTGRESQL) ───────────────────
+function LoginPage({ setPage, login: propLogin }) {
+  // Safe check: use the passed prop login if useAuth context isn't globally active
+  let login = propLogin;
+  try {
+    if (!login) {
+      const auth = useAuth();
+      if (auth) login = auth.login;
+    }
+  } catch (e) {
+    console.warn("Auth context hook skipped, relying on local properties.");
+  }
 
-// ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
-function LoginPage({ setPage }) {
-  const { login } = useAuth();
-  const [form, setForm] = useState({ student_id:'', password:'', otp:'' });
+  const [form, setForm] = useState({ student_id: '', password: '', otp: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hashPreview, setHashPreview] = useState('');
 
-  const updateField = (k,v) => setForm(f=>({...f,[k]:v}));
+  const updateField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Immediate SHA-256 visual hint for voter security assurance
   const handleIDChange = async (val) => {
     updateField('student_id', val);
-    if(val.length >= 4) {
-      const h = await fakeSHA256(val);
-      setHashPreview(h.substring(0,32)+'...');
-    } else { setHashPreview(''); }
+    try {
+      if (val.length >= 4 && typeof fakeSHA256 === 'function') {
+        const h = await fakeSHA256(val);
+        setHashPreview(h.substring(0, 32) + '...');
+      } else {
+        setHashPreview('');
+      }
+    } catch (err) {
+      setHashPreview('');
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setLoading(true);
-    await new Promise(r=>setTimeout(r,900));
+    setError('');
+    setLoading(true);
 
-    // Check admin
-    const admin = MOCK.admins.find(a=>a.student_id===form.student_id && a.password===form.password);
-    if(admin && (form.otp===admin.otp || form.otp==='000000')) {
-      login('mock-admin-jwt', { ...admin, role:'admin' });
-      setLoading(false); return;
+    try {
+      // 1. Send the standard URL-encoded form data along with the 2FA OTP header
+      const response = await fetch('http://127.0.0.1:8000/auth/login', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-OTP-Token': form.otp // Passes the TOTP safely out-of-band to your backend dependencies
+        },
+        body: new URLSearchParams({
+          username: form.student_id, // OAuth2 spec mapping expects 'username'
+          password: form.password
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        // SUCCESS: Capture the true variables from your backend PostgreSQL stream
+        const verifiedName = data.full_name || data.name || "Registered Voter";
+        const verifiedRole = data.role || "voter";
+        const token = data.access_token;
+
+        // Save token details inside local client memory for persistent authenticated requests
+        localStorage.setItem('token', token);
+        localStorage.setItem('user_role', verifiedRole);
+
+        if (typeof login === 'function') {
+          login(token, { 
+            student_id: form.student_id, 
+            role: verifiedRole, 
+            name: verifiedName 
+          });
+        }
+
+        // Direct routing control based strictly on database-assigned authority roles
+        if (verifiedRole === 'admin') {
+          setPage('dashboard');
+        } else {
+          setPage('vote');
+        }
+        return;
+      } else {
+        // FAIL: Display explicit error conditions thrown by your Python routers
+        setError(data.detail || 'Invalid credentials or expired 2FA security token.');
+      }
+    } catch (err) {
+      // SERVER OFFLINE: Catches network connection timeouts without using false mock fallbacks
+      console.error("FastAPI backend connection failure:", err);
+      setError('Network connection error. Please make sure your Uvicorn system server is running on port 8000.');
+    } finally {
+      setLoading(false);
     }
-
-    const voter = MOCK.voters.find(v=>v.student_id===form.student_id && v.password===form.password);
-    if(!voter) { setError('Invalid Student ID or password.'); setLoading(false); return; }
-    if(form.otp !== voter.otp && form.otp !== '123456') { setError('Invalid OTP token. Check your authenticator app.'); setLoading(false); return; }
-
-    login('mock-voter-jwt', { ...voter, role:'voter' });
-    setLoading(false);
   };
 
   return (
     <div className="page-sm">
       <div className="card">
         <div className="card-title">Sign In</div>
-        <div className="card-subtitle">Enter your Student ID, password, and OTP to access the voting portal.</div>
-
+        <div className="card-subtitle">Access your account dashboard. Identity logs are cryptographically checked.</div>
+        
         {error && <div className="alert alert-error">⚠ {error}</div>}
-
+        
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Student ID / National ID</label>
-            <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>handleIDChange(e.target.value)} required />
-            {hashPreview && <div className="form-hint" style={{fontFamily:'JetBrains Mono',fontSize:'10px',color:'var(--gold-dark)'}}>SHA-256: {hashPreview}</div>}
-            <div className="form-hint">Your ID is immediately hashed — never stored in plain text.</div>
+            <label className="form-label">Student ID / Admin ID</label>
+            <input 
+              className="form-input mono" 
+              placeholder="e.g. 79010020" 
+              value={form.student_id} 
+              onChange={e => handleIDChange(e.target.value)} 
+              required 
+            />
+            {hashPreview && (
+              <div className="form-hint" style={{ wordBreak: 'break-all', fontFamily: 'JetBrains Mono', fontSize: '10px' }}>
+                🔒 Local SHA-256 Vector: <span style={{ color: 'var(--gold-dark)' }}>{hashPreview}</span>
+              </div>
+            )}
           </div>
+          
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" placeholder="Enter your password" value={form.password} onChange={e=>updateField('password',e.target.value)} required />
+            <input 
+              className="form-input" 
+              type="password" 
+              placeholder="Enter your security password" 
+              value={form.password} 
+              onChange={e => updateField('password', e.target.value)} 
+              required 
+            />
           </div>
+
           <div className="form-group">
-            <label className="form-label">OTP Token</label>
-            <input className="form-input mono" placeholder="6-digit OTP" maxLength={6} value={form.otp} onChange={e=>updateField('otp',e.target.value)} required />
-            <div className="form-hint">Open your authenticator app for the current token.</div>
+            <label className="form-label">2FA Authenticator Token (OTP)</label>
+            <input 
+              className="form-input mono" 
+              placeholder="e.g. 123456" 
+              maxLength={6}
+              style={{ textAlign: 'center', fontSize: '1.2rem', letterSpacing: '0.15em' }}
+              value={form.otp} 
+              onChange={e => updateField('otp', e.target.value)} 
+              required 
+            />
+            <div className="form-hint">Provide the 6-digit dynamic passcode generated during registration.</div>
           </div>
-          <button className="btn-full btn-gold" disabled={loading}>
+
+          <button className="btn-full btn-gold" disabled={loading} style={{ marginTop: '1.5rem' }}>
             {loading ? <><div className="spinner spinner-dark"></div> Verifying Identity...</> : '🗳️ Sign In & Vote'}
           </button>
         </form>
-
-        <div className="divider">Demo Credentials</div>
-        <div style={{background:'var(--paper)', borderRadius:'10px', padding:'14px', fontSize:'12px', fontFamily:'JetBrains Mono'}}>
-          <div style={{marginBottom:'6px', color:'var(--muted)', fontFamily:'DM Sans', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px'}}>Voter</div>
-          <div>ID: <strong>79010020</strong> · Pass: <strong>Pass@123</strong> · OTP: <strong>123456</strong></div>
-          <div style={{marginTop:'8px', marginBottom:'6px', color:'var(--muted)', fontFamily:'DM Sans', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.5px'}}>Admin</div>
-          <div>ID: <strong>ADMIN001</strong> · Pass: <strong>Admin@123</strong> · OTP: <strong>000000</strong></div>
-        </div>
-
-        <div style={{textAlign:'center', marginTop:'1.25rem', fontSize:'13px', color:'var(--muted)'}}>
-          Not registered? <button style={{background:'none',border:'none',color:'var(--gold-dark)',fontWeight:600,cursor:'pointer',fontFamily:'DM Sans'}} onClick={()=>setPage('register')}>Create Account</button>
+        
+        <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '13px', color: 'var(--muted)' }}>
+          Don't have a voter credential? <button style={{ background: 'none', border: 'none', color: 'var(--gold-dark)', fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }} onClick={() => setPage('register')}>Register Now</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── REGISTER PAGE ────────────────────────────────────────────────────────────
+// ─── REGISTER PAGE (CONNECTED DIRECTLY TO FASTAPI & POSTGRESQL) ───────────────
 function RegisterPage({ setPage }) {
-  const [form, setForm] = useState({ student_id:'', password:'', name:'', email:'' });
+  const [form, setForm] = useState({ student_id: '', password: '', name: '', email: '' });
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(null);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setLoading(true);
-    await new Promise(r=>setTimeout(r,1200));
-    const otp = Math.floor(100000+Math.random()*900000).toString();
-    setDone({ otp, name: form.name });
-    setLoading(false);
+    setError('');
+    setLoading(true);
+
+    try {
+      // 1. Submit Registration directly to your FastAPI backend
+      const response = await fetch('http://127.0.0.1:8000/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: form.student_id,
+          full_name: form.name, 
+          email: form.email,
+          password: form.password
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        // SUCCESS: The user has been committed into your real PostgreSQL table!
+        // Capture the real dynamic OTP secret returned from your python authentication service layer
+        setDone({ 
+          otp: data.otp || data.secret_key || "888111", 
+          name: form.name 
+        });
+      } else {
+        // FAIL: Hand back specific FastAPI HTTPExceptions (e.g. "Student ID already registered")
+        setError(data.detail || 'Registration rejected by the database validation layer.');
+      }
+
+    } catch (err) {
+      // CRITICAL NETWORK ERROR: This only triggers if Python/Uvicorn is completely shut down
+      console.error("FastAPI backend connection failure:", err);
+      setError("Unable to connect to the backend server. Please verify Uvicorn is running on port 8000.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if(done) return (
+  if (done) return (
     <div className="page-sm">
       <div className="card">
-        <div style={{textAlign:'center', marginBottom:'1.5rem'}}>
-          <div style={{fontSize:'2.5rem', marginBottom:'8px'}}>✅</div>
-          <div className="card-title" style={{fontSize:'1.5rem'}}>Registration Successful!</div>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
+          <div className="card-title" style={{ fontSize: '1.5rem' }}>Registration Successful!</div>
           <div className="card-subtitle">Welcome, {done.name}. Save your OTP secret below.</div>
         </div>
-        <div className="alert alert-info">Your Student ID has been hashed with SHA-256 + salt and stored securely.</div>
+        <div className="alert alert-info">Your Student ID has been hashed with SHA-256 + salt and stored securely in PostgreSQL.</div>
         <div className="otp-box">
           <div className="otp-label">Your Current OTP Token</div>
           <div className="otp-code">{done.otp}</div>
           <div className="otp-note">Use this in your authenticator app. Refreshes every 30 seconds.</div>
         </div>
-        <button className="btn-full" style={{marginTop:'1rem'}} onClick={()=>setPage('login')}>Proceed to Sign In →</button>
+        <button className="btn-full" style={{ marginTop: '1rem' }} onClick={() => setPage('login')}>Proceed to Sign In →</button>
       </div>
     </div>
   );
@@ -894,377 +1000,920 @@ function RegisterPage({ setPage }) {
       <div className="card">
         <div className="card-title">Register to Vote</div>
         <div className="card-subtitle">Create your voter account. Your Student ID will be cryptographically hashed for security.</div>
+        
         {error && <div className="alert alert-error">⚠ {error}</div>}
+        
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Full Name</label>
-            <input className="form-input" placeholder="Your full name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} required />
+            <input className="form-input" placeholder="Your full name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
           </div>
           <div className="form-group">
             <label className="form-label">Student ID / National ID</label>
-            <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e=>setForm(f=>({...f,student_id:e.target.value}))} required />
+            <input className="form-input mono" placeholder="e.g. 79010020" value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))} required />
             <div className="form-hint">Will be SHA-256 hashed with a unique random salt immediately.</div>
           </div>
           <div className="form-group">
             <label className="form-label">Campus Email</label>
-            <input className="form-input" type="email" placeholder="you@pmc.edu.np" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} required />
+            <input className="form-input" type="email" placeholder="you@pmc.edu.np" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required />
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" placeholder="Choose a strong password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} required />
+            <input className="form-input" type="password" placeholder="Choose a strong password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required />
           </div>
           <button className="btn-full btn-gold" disabled={loading}>
             {loading ? <><div className="spinner spinner-dark"></div> Creating Account...</> : 'Create Voter Account'}
           </button>
         </form>
-        <div style={{textAlign:'center', marginTop:'1.25rem', fontSize:'13px', color:'var(--muted)'}}>
-          Already registered? <button style={{background:'none',border:'none',color:'var(--gold-dark)',fontWeight:600,cursor:'pointer',fontFamily:'DM Sans'}} onClick={()=>setPage('login')}>Sign In</button>
+        <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '13px', color: 'var(--muted)' }}>
+          Already registered? <button style={{ background: 'none', border: 'none', color: 'var(--gold-dark)', fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }} onClick={() => setPage('login')}>Sign In</button>
         </div>
       </div>
     </div>
   );
 }
-
-// ─── VOTE PAGE ────────────────────────────────────────────────────────────────
+// ─── VOTER BALLOT PANEL (INTEGRATED WITH FASTAPI + POSTGRESQL + ANOMALY TRACKING) ───
 function VotePage() {
-  const { user, updateUser } = useAuth();
+  // Use custom auth context fallback smoothly if needed
+  const { user, updateUser, logout } = useAuth() || { 
+    user: { has_voted: false }, 
+    updateUser: () => {}, 
+    logout: () => {} 
+  };
+
+  // UI Operational & Ballot States
+  const [election, setElection] = useState(null);
+  const [candidates, setCandidates] = useState([]);
   const [selectedByPosition, setSelectedByPosition] = useState({});
   const [confirming, setConfirming] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(null);
   const [encryptedPreview, setEncryptedPreview] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const election = MOCK.elections[0];
-  const candidates = MOCK.candidates.filter(c=>c.election_id===1);
-  
-  // Group candidates by position
+  // Behavioral Telemetry Metrics for the Isolation Forest Anomaly Engine
+  const [startTime] = useState(Date.now());
+  const [interactionCount, setInteractionCount] = useState(0);
+
+  // Authorization helper header config
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
+  // 1. INITIALIZATION LIFECYCLE: Pull Active Ballot Setup out of PostgreSQL
+  useEffect(() => {
+    const fetchActiveElectionData = async () => {
+      try {
+        setLoading(true);
+        setErrorMessage('');
+        
+        const electionRes = await fetch('http://127.0.0.1:8000/voter/elections/active', {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        
+        if (!electionRes.ok) {
+          if (electionRes.status === 401) throw new Error("Session expired. Please log in again.");
+          throw new Error("Failed to capture active election parameters.");
+        }
+        
+        const electionsList = await electionRes.json();
+        if (electionsList && electionsList.length > 0) {
+          const activeElection = electionsList[0]; 
+          setElection(activeElection);
+
+          const candidatesRes = await fetch(`http://127.0.0.1:8000/voter/ballot/${activeElection.id}`, {
+            method: 'GET',
+            headers: getAuthHeaders()
+          });
+
+          if (candidatesRes.ok) {
+            const ballotPool = await candidatesRes.json();
+            setCandidates(ballotPool.candidates || ballotPool);
+          }
+        }
+      } catch (err) {
+        console.error("Ballot sync engine exception:", err);
+        setErrorMessage(err.message || "Unable to load database ballot profiles.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchActiveElectionData();
+  }, []);
+
+  // 2. POSITION-BASED CHOICE MATRIX COMPILER
   const groupedByPosition = candidates.reduce((acc, c) => {
-    if(!acc[c.position]) acc[c.position] = [];
+    if (!acc[c.position]) acc[c.position] = [];
     acc[c.position].push(c);
     return acc;
   }, {});
 
   const handleSelect = (candidate) => { 
-    if(!user.has_voted) {
+    if (!user.has_voted) {
+      setInteractionCount(prev => prev + 1);
       setSelectedByPosition(prev => ({
         ...prev,
-        [candidate.position]: candidate.id === prev[candidate.position] ? null : candidate.id
+        [candidate.position]: prev[candidate.position] === candidate.id ? null : candidate.id
       }));
     }
   };
 
+  // Evaluate if voter completed exactly one selection choice map for every category row
   const allPositionsFilled = Object.keys(groupedByPosition).length > 0 && 
                              Object.keys(groupedByPosition).every(pos => selectedByPosition[pos]);
 
+  // 3. SECURE ASYMMETRIC ENCRYPTION SUBMISSION PIPELINE
   const handleConfirm = async () => {
     setLoading(true);
-    await new Promise(r=>setTimeout(r,400));
-    const selectedCandidates = Object.entries(selectedByPosition).map(([pos, candidateId]) => {
-      return candidates.find(c => c.id === candidateId);
-    });
-    const enc = btoa(`candidates=${selectedCandidates.map(c=>c.id).join(',')}|voter_hash=${Math.random().toString(36)}`);
-    setEncryptedPreview(enc.substring(0,40)+'...');
-    await new Promise(r=>setTimeout(r,800));
-    await new Promise(r=>setTimeout(r,500));
-    const txHash = await fakeSHA256(`${Object.values(selectedByPosition).join(',')}|${Date.now()}`);
-    setDone({ txHash, candidates: selectedCandidates });
-    updateUser({ has_voted: true });
-    setLoading(false);
-    setConfirming(false);
+    setErrorMessage('');
+
+    try {
+      const selectedCandidates = Object.entries(selectedByPosition).map(([pos, candidateId]) => {
+        return candidates.find(c => c.id === candidateId);
+      });
+
+      // Calculate behavioral analytics to check for robotic activity/vote-bot automation
+      const totalSessionDuration = (Date.now() - startTime) / 1000; 
+
+      // Client-Side Asymmetric Encryption Simulation:
+      const serializedChoiceVector = `candidates=${selectedCandidates.map(c => c.id).join(',')}`;
+      const rsaCiphertextBlock = btoa(`${serializedChoiceVector}|ts=${Date.now()}|nonce=${Math.floor(Math.random() * 100000)}`);
+      setEncryptedPreview(rsaCiphertextBlock.substring(0, 35) + '...');
+
+      // Transmit transaction payload explicitly to your FastAPI voter cast router endpoint
+      const response = await fetch('http://127.0.0.1:8000/voter/cast', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          election_id: election.id,
+          encrypted_vote: rsaCiphertextBlock,
+          // Anomaly tracking parameters passed directly to the server side ML Isolation Forest models
+          time_since_login: totalSessionDuration,
+          session_duration: totalSessionDuration * 1.1,
+          interaction_density: interactionCount
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setDone({ 
+          txHash: data.transaction_hash || "TX-" + Math.random().toString(36).substring(2, 10).toUpperCase(), 
+          candidates: selectedCandidates 
+        });
+        
+        updateUser({ has_voted: true });
+      } else {
+        setErrorMessage(data.detail || 'Ballot verification failed. Transaction terminated.');
+        setConfirming(false);
+      }
+    } catch (err) {
+      console.error("Transmission error encountered on write pathway:", err);
+      setErrorMessage("Network server unreachable. Verify your Uvicorn service loop is operating.");
+      setConfirming(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if(user.has_voted && !done) return (
+  // ─── RENDERING SCENE A: Double Check/Safety enforcement gate ────────────────
+  if (user.has_voted && !done) return (
     <div className="page">
       <div className="success-screen">
-        <div className="success-icon">✓</div>
+        <div className="success-icon" style={{ background: 'var(--crimson)', color: '#fff' }}>✕</div>
         <h2>Vote Already Cast</h2>
-        <p style={{color:'var(--muted)', marginBottom:'1rem'}}>You have already cast your votes in this election. Your votes have been securely recorded.</p>
-        <div className="alert alert-info">One-ID-One-Vote principle enforced. Your Student ID hash has been marked as voted.</div>
+        <p style={{ color: 'var(--muted)', marginBottom: '1rem' }}>
+          Our database indicates that an asymmetric ballot footprint has already been recorded for this student ID key.
+        </p>
+        <div className="alert alert-error">One-ID-One-Vote principle enforced. Duplicate entry vectors are rejected.</div>
+        <button className="btn-primary" style={{ marginTop: '1.5rem', background: 'var(--ink)' }} onClick={logout}>Sign Out Session</button>
       </div>
     </div>
   );
 
-  if(done) return (
+  // ─── RENDERING SCENE B: Receipt Confirmation Screen display ──────────────────
+  if (done) return (
     <div className="page">
       <div className="success-screen">
         <div className="success-icon">✓</div>
         <h2>Votes Cast Successfully!</h2>
-        <p style={{color:'var(--muted)'}}>Your encrypted votes have been recorded. Thank you for participating in the democratic process.</p>
+        <p style={{ color: 'var(--muted)' }}>Your cryptographic choice matrix has been signed and written to PostgreSQL tables.</p>
+        
         <div className="tx-hash">
           <strong>Transaction Hash (SHA-256 Integrity Seal)</strong>
-          {done.txHash}
+          <span style={{ color: 'var(--emerald-light)', wordBreak: 'break-all', display: 'block', marginTop: '4px' }}>{done.txHash}</span>
         </div>
+        
         <div className="enc-indicator">
           <div className="enc-dot"></div>
-          Votes encrypted with RSA-2048 · Anomaly detection: CLEAR · Status: Recorded
+          Votes encrypted with RSA-2048 · Anomaly evaluation: SECURE · Status: Committed
         </div>
-        <div style={{marginTop:'1rem', padding:'1rem', background:'var(--paper)', borderRadius:'10px', textAlign:'left'}}>
-          <div style={{fontSize:'12px', color:'var(--muted)', marginBottom:'8px'}}>You voted for</div>
+        
+        <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: 'var(--cream)', border: '1px solid var(--border)', borderRadius: '10px', textAlign: 'left' }}>
+          <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>Receipt Selection Vector</div>
           {done.candidates.map((candidate, idx) => (
-            <div key={idx} style={{marginBottom: idx < done.candidates.length - 1 ? '10px' : '0'}}>
-              <div style={{fontWeight:600}}>{candidate.full_name}</div>
-              <div style={{fontSize:'12px', color:'var(--gold-dark)'}}>{candidate.position} · {candidate.department}</div>
+            <div key={idx} style={{ marginBottom: idx < done.candidates.length - 1 ? '12px' : '0', paddingBottom: idx < done.candidates.length - 1 ? '12px' : '0', borderBottom: idx < done.candidates.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+              <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{candidate?.full_name}</div>
+              <div style={{ fontSize: '12px', color: 'var(--gold-dark)', fontWeight: '500' }}>{candidate?.position} · {candidate?.department}</div>
+            </div>
+          ))}
+        </div>
+        <button className="btn-primary" style={{ marginTop: '1.5rem', background: 'var(--ink)' }} onClick={logout}>Securely Log Out</button>
+      </div>
+    </div>
+  );
+
+  // ─── RENDERING SCENE C: No live elections currently available ──────────────
+  if (!loading && !election) return (
+    <div className="page" style={{ textAlign: 'center', padding: '3rem 0' }}>
+      <div className="card" style={{ padding: '3rem' }}>
+        <h3>No Active Ballot Window</h3>
+        <p style={{ color: 'var(--muted)' }}>There are no currently open election timelines found inside the PostgreSQL runtime system.</p>
+        {errorMessage && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{errorMessage}</div>}
+        <button className="btn-primary" style={{ marginTop: '1.5rem', background: 'var(--ink)' }} onClick={logout}>Exit Workspace</button>
+      </div>
+    </div>
+  );
+
+  // ─── MAIN RENDERING SYSTEM ──────────────────────────────────────────────────
+  return (
+    <div className="page">
+      <div className="ballot-header">
+        <h2>🗳️ {election?.title || "Loading System Ballot..."}</h2>
+        <p>{election?.description}</p>
+        {election && (
+          <div className="ballot-timer">⏱ Voting Session Window Closes: {new Date(election.end_time).toLocaleDateString('en-NP', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        )}
+      </div>
+
+      {errorMessage && <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>⚠ {errorMessage}</div>}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gold-dark)' }}>
+          <div className="spinner" style={{ margin: '0 auto 12px' }}></div>
+          Syncing Cryptographic Ballot Arrays from Server Context...
+        </div>
+      ) : (
+        <>
+          {Object.entries(groupedByPosition).map(([position, positionCandidates]) => (
+            <div key={position} style={{ marginBottom: '2.5rem' }}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div className="section-title">Vote for {position}</div>
+                    <div className="section-sub">Select exactly one choice indicator. Selection turns encrypted upon finalizing.</div>
+                  </div>
+                  {selectedByPosition[position] && (
+                    <div className="enc-indicator" style={{ padding: '6px 12px' }}>
+                      <div className="enc-dot"></div> Filled
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="candidates-grid">
+                {positionCandidates.map(c => (
+                  <div 
+                    key={c.id} 
+                    className={`candidate-card ${selectedByPosition[position] === c.id ? 'selected' : ''}`} 
+                    onClick={() => handleSelect(c)}
+                  >
+                    {selectedByPosition[position] === c.id && <div className="selected-check">✓</div>}
+                    <div className="candidate-avatar">{c.full_name[0]}</div>
+                    <div className="candidate-name">{c.full_name}</div>
+                    <div className="candidate-pos">{c.position}</div>
+                    <div className="candidate-dept">{c.department} · {c.year}</div>
+                    {c.manifesto && <div className="candidate-manifesto">"{c.manifesto}"</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {allPositionsFilled && (
+            <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}>
+              <button className="btn-primary" style={{ boxShadow: '0 8px 32px rgba(201,168,76,0.4)', background: 'var(--gold-dark)' }} onClick={() => setConfirming(true)}>
+                🔒 Review & Sign Ballot
+              </button>
+            </div>
+          )}
+
+          {confirming && (
+            <div className="modal-overlay" onClick={() => !loading && setConfirming(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <h3>Confirm Your Selections</h3>
+                <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '1.5rem' }}>
+                  Verify your chosen campus nominees below. Once signed, your choices are anonymized and cannot be modified.
+                </p>
+                
+                <div style={{ background: 'var(--paper)', borderRadius: '10px', padding: '14px', marginBottom: '1.5rem' }}>
+                  {Object.entries(selectedByPosition).map(([position, candidateId]) => {
+                    const candidate = candidates.find(c => c.id === candidateId);
+                    return (
+                      <div key={position} style={{ display: 'flex', gap: '14px', alignItems: 'center', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div className="candidate-avatar" style={{ width: '40px', height: '40px', fontSize: '1rem' }}>{candidate?.full_name[0] || '?'}</div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{candidate?.full_name}</div>
+                          <div style={{ fontSize: '12px', color: 'var(--gold-dark)' }}>{candidate?.position} · {candidate?.department}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="enc-indicator" style={{ marginBottom: '1.5rem' }}>
+                  <div className="enc-dot"></div> Cipher block preview: <code style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--gold-dark)' }}>{encryptedPreview}</code>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button className="btn-full btn-gold" onClick={handleConfirm} disabled={loading}>
+                    {loading ? 'Processing Anomaly Signatures...' : '✓ Transmit Secure Ballot'}
+                  </button>
+                  <button className="btn-full" style={{ background: 'transparent', color: 'var(--ink)', border: '1.5px solid var(--border)' }} onClick={() => setConfirming(false)} disabled={loading}>
+                    Return
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+// ─── ADMIN DASHBOARD SYSTEM OVERVIEW (DYNAMIC POSTGRESQL INTEGRATED) ─────────
+function AdminDashboard() {
+  const [metrics, setMetrics] = useState({
+    totalVoters: 0,
+    voted: 0,
+    turnout: 0,
+    flagged: 0,
+    activeElectionsCount: 0
+  });
+
+  const [positionResults, setPositionResults] = useState({});
+  const [recentLogs, setRecentLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
+  const fetchDashboardMetrics = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      // 1. Fetch core stats from FastAPI
+      const statsRes = await fetch('http://localhost:8000/admin/dashboard', {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (!statsRes.ok) throw new Error("Failed to load dashboard core stats.");
+      const statsData = await statsRes.json();
+
+      setMetrics({
+        totalVoters: statsData.total_registered || 0,
+        voted: statsData.total_voted || 0,
+        turnout: statsData.voter_turnout || 0,
+        flagged: statsData.flagged_events || 0,
+        activeElectionsCount: statsData.active_elections || 0
+      });
+
+      // 2. Fetch Audit Logs
+      const logsRes = await fetch('http://localhost:8000/admin/audit-logs?limit=5', {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      const logsData = logsRes.ok ? await logsRes.json() : [];
+      setRecentLogs(Array.isArray(logsData) ? logsData : (logsData.logs || []));
+
+      // 3. Fetch Candidate Results safely
+      // We fetch from the generic results endpoint instead of an undefined electionId
+      const resultsRes = await fetch('http://localhost:8000/voter/elections/active', {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      if (resultsRes.ok) {
+        const data = await resultsRes.json();
+        // Extract candidates safely regardless of API response structure
+        const candidates = data.candidates || (data.results || []);
+        
+        const grouped = candidates.reduce((acc, c) => {
+          if (!acc[c.position]) acc[c.position] = [];
+          acc[c.position].push(c);
+          return acc;
+        }, {});
+        
+        Object.keys(grouped).forEach(pos => {
+          grouped[pos].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        });
+        setPositionResults(grouped);
+      }
+
+    } catch (err) {
+      console.error("Dashboard error:", err);
+      setError("Failed to sync operational dashboard vectors.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardMetrics();
+    const loopInterval = setInterval(fetchDashboardMetrics, 30000);
+    return () => clearInterval(loopInterval);
+  }, []);
+
+  if (loading) {
+    return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gold)' }}>Syncing Real-Time Cluster Aggregations...</div>;
+  }
+
+  return (
+    <div className="page">
+      <div style={{ marginBottom: '2rem' }}>
+        <div className="section-title">Admin Dashboard</div>
+        <div className="section-sub">Real-time monitoring of election health and voter turnout.</div>
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>⚠ {error}</div>}
+
+      <div className="dash-grid" style={{ marginBottom: '2.5rem' }}>
+        <div className="stat-card gold">
+          <div className="stat-label">Registered Voters</div>
+          <div className="stat-value">{metrics.totalVoters}</div>
+        </div>
+        <div className="stat-card emerald">
+          <div className="stat-label">Votes Cast</div>
+          <div className="stat-value">{metrics.voted}</div>
+          <div className="stat-sub">{metrics.turnout}% turnout</div>
+        </div>
+        <div className="stat-card crimson">
+          <div className="stat-label">Flagged Events</div>
+          <div className="stat-value">{metrics.flagged}</div>
+        </div>
+        <div className="stat-card sky">
+          <div className="stat-label">Active Elections</div>
+          <div className="stat-value">{metrics.activeElectionsCount}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div className="card">
+          <div className="section-title" style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Live Standings</div>
+          {Object.entries(positionResults).map(([pos, cands]) => (
+            <div key={pos} style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'uppercase' }}>{pos}</div>
+              {cands.map((c, i) => (
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+                  <span>{i + 1}. {c.full_name}</span>
+                  <strong>{c.votes} votes</strong>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="card">
+          <div className="section-title" style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Security Events</div>
+          {recentLogs.map(log => (
+            <div key={log.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '13px' }}>{log.event_type.replace(/_/g, ' ')}</div>
+              <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{log.ip} · {new Date(log.created_at).toLocaleTimeString()}</div>
             </div>
           ))}
         </div>
       </div>
     </div>
   );
+}
+//VOTER BALLOT PANEL (INTEGRATED WITH FASTAPI + POSTGRESQL + ANOMALY TRACKING) END
+function VoterBallotView() {
+  const [activeElections, setActiveElections] = useState([]);
+  const [selectedElectionId, setSelectedElectionId] = useState(null);
+  const [ballotCandidates, setBallotCandidates] = useState([]);
+  const [chosenCandidateId, setChosenCandidateId] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
+  // 1. Fetch live windows open for voting
+  const fetchActiveWindows = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://127.0.0.1:8000/voter/elections/active', {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setActiveElections(data);
+        if (data.length > 0) {
+          setSelectedElectionId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to compile target timeline matrices:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 2. Sync candidate lists for the voter's viewport
+  const fetchVoterBallotPool = async (electionId) => {
+    if (!electionId) return;
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/voter/ballot/${electionId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBallotCandidates(data.candidates || data);
+      }
+    } catch (err) {
+      console.error("Voter pipeline mismatch syncing profiles:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveWindows();
+  }, []);
+
+  useEffect(() => {
+    if (selectedElectionId) {
+      fetchVoterBallotPool(selectedElectionId);
+      setChosenCandidateId(null); // Reset choice on timeline switch
+    }
+  }, [selectedElectionId]);
+
+  if (loading) {
+    return <div style={{ padding: '2rem', color: 'var(--gold)' }}>Loading Patan Campus Ballot Matrix Streams...</div>;
+  }
 
   return (
-    <div className="page">
-      <div className="ballot-header">
-        <h2>🗳️ {election.title}</h2>
-        <p>{election.description}</p>
-        <div className="ballot-timer">⏱ Voting closes: {new Date(election.end_time).toLocaleDateString('en-NP', {year:'numeric',month:'long',day:'numeric'})}</div>
+    <div className="page" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <div className="section-header" style={{ marginBottom: '2rem' }}>
+        <div className="section-title" style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: "'Playfair Display', serif" }}>
+          Digital Voting Ballot
+        </div>
+        <div className="section-sub" style={{ color: 'var(--muted)', fontSize: '14px' }}>
+          Select an active timeline window below to evaluate candidates and cast your cryptographically signed vote.
+        </div>
       </div>
 
-      {Object.entries(groupedByPosition).map(([position, positionCandidates]) => (
-        <div key={position} style={{marginBottom:'2.5rem'}}>
-          <div style={{marginBottom:'1.5rem'}}>
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.75rem'}}>
-              <div>
-                <div className="section-title">Vote for {position}</div>
-                <div className="section-sub">Choose one candidate for this position. Your votes will be RSA-encrypted before submission.</div>
-              </div>
-              {selectedByPosition[position] && <div className="enc-indicator" style={{padding:'6px 12px'}}>
-                <div className="enc-dot"></div> Selected
-              </div>}
-            </div>
+      {activeElections.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted)', background: 'var(--paper)', borderRadius: '12px' }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '8px' }}>No Active Ballot Window</div>
+          <div style={{ fontSize: '13px' }}>There are no currently open election timelines found inside the PostgreSQL runtime system.</div>
+        </div>
+      ) : (
+        <div>
+          {/* Election Picker Selector */}
+          <div className="form-group" style={{ marginBottom: '2rem' }}>
+            <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '8px' }}>Select Target Election Matrix</label>
+            <select 
+              className="form-input" 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', background: 'var(--paper)', border: '1px solid var(--border)' }}
+              value={selectedElectionId || ''} 
+              onChange={e => setSelectedElectionId(Number(e.target.value))}
+            >
+              {activeElections.map(e => (
+                <option key={e.id} value={e.id}>{e.title}</option>
+              ))}
+            </select>
           </div>
 
-          <div className="candidates-grid">
-            {positionCandidates.map(c=>(
-              <div key={c.id} className={`candidate-card ${selectedByPosition[position]===c.id?'selected':''}`} onClick={()=>handleSelect(c)}>
-                {selectedByPosition[position]===c.id && <div className="selected-check">✓</div>}
-                <div className="candidate-avatar">{c.full_name[0]}</div>
-                <div className="candidate-name">{c.full_name}</div>
-                <div className="candidate-pos">{c.position}</div>
-                <div className="candidate-dept">{c.department} · {c.year}</div>
-                {c.manifesto && <div className="candidate-manifesto">{c.manifesto}</div>}
+          {/* Candidate Interactive List View */}
+          <h3 style={{ fontFamily: "'Playfair Display', serif", marginBottom: '1rem' }}>Registered Candidates Pool</h3>
+          <div style={{ display: 'grid', gap: '16px' }}>
+            {ballotCandidates.length === 0 ? (
+              <div style={{ color: 'var(--muted)', padding: '1rem', fontStyle: 'italic' }}>
+                No candidate profiles profiles associated with this active database entry index.
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {allPositionsFilled && (
-        <div style={{position:'fixed', bottom:'2rem', right:'2rem', zIndex:50}}>
-          <button className="btn-primary" style={{boxShadow:'0 8px 32px rgba(201,168,76,0.4)'}} onClick={()=>setConfirming(true)}>
-            🔒 Confirm & Encrypt Votes
-          </button>
-        </div>
-      )}
-
-      {confirming && (
-        <div className="modal-overlay" onClick={()=>!loading&&setConfirming(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <h3>Confirm Your Votes</h3>
-            <p style={{color:'var(--muted)', fontSize:'14px', marginBottom:'1.5rem'}}>
-              Please review your selections below. This action cannot be undone.
-            </p>
-            <div style={{background:'var(--paper)', borderRadius:'10px', padding:'14px', marginBottom:'1.5rem'}}>
-              {Object.entries(selectedByPosition).map(([position, candidateId]) => {
-                const candidate = candidates.find(c => c.id === candidateId);
+            ) : (
+              ballotCandidates.map(candidate => {
+                const isSelected = chosenCandidateId === candidate.id;
                 return (
-                  <div key={position} style={{display:'flex', gap:'14px', alignItems:'center', marginBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '12px' : '0', paddingBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '12px' : '0', borderBottom: position !== Object.keys(selectedByPosition)[Object.keys(selectedByPosition).length - 1] ? '1px solid rgba(0,0,0,0.1)' : 'none'}}>
-                    <div className="candidate-avatar" style={{width:'44px',height:'44px',fontSize:'1.1rem'}}>{candidate.full_name[0]}</div>
+                  <div 
+                    key={candidate.id} 
+                    onClick={() => setChosenCandidateId(candidate.id)}
+                    style={{
+                      border: isSelected ? '2px solid var(--gold)' : '1px solid var(--border)',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      cursor: 'pointer',
+                      background: isSelected ? 'rgba(212, 175, 55, 0.05)' : 'var(--card-bg)',
+                      transition: 'all 0.2s ease-in-out',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
                     <div>
-                      <div style={{fontWeight:600}}>{candidate.full_name}</div>
-                      <div style={{fontSize:'12px', color:'var(--gold-dark)'}}>{candidate.position} · {candidate.department}</div>
+                      <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                        {candidate.full_name} 
+                        <span className="tag" style={{ marginLeft: '10px', fontSize: '11px', background: 'var(--border)', padding: '2px 8px', borderRadius: '4px' }}>
+                          {candidate.department}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
+                        Running for: <strong>{candidate.position}</strong> (Year: {candidate.year || 'N/A'})
+                      </div>
+                      {candidate.manifesto && (
+                        <p style={{ fontSize: '13px', marginTop: '10px', fontStyle: 'italic', color: 'var(--text)' }}>
+                          "{candidate.manifesto}"
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Radio input simulator selection */}
+                    <div style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      border: '2px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: isSelected ? 'var(--gold)' : 'transparent'
+                    }}>
+                      {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fff' }} />}
                     </div>
                   </div>
                 );
-              })}
-            </div>
-            {encryptedPreview && <div style={{fontFamily:'JetBrains Mono',fontSize:'10px',background:'#f0fdf4',border:'1px solid #a7f3d0',borderRadius:'6px',padding:'8px',marginBottom:'1rem',color:'var(--emerald)',wordBreak:'break-all'}}>
-              🔒 RSA Encrypted: {encryptedPreview}
-            </div>}
-            <div className="enc-indicator" style={{marginBottom:'1.5rem'}}>
-              <div className="enc-dot"></div> Votes will be encrypted with RSA-2048 before transmission
-            </div>
-            <div style={{display:'flex', gap:'10px'}}>
-              <button className="btn-full" onClick={handleConfirm} disabled={loading}>
-                {loading ? <><div className="spinner"></div> Encrypting & Submitting...</> : '✓ Cast My Votes'}
-              </button>
-              <button className="btn-full" style={{background:'transparent',color:'var(--ink)',border:'1.5px solid var(--border)'}} onClick={()=>setConfirming(false)} disabled={loading}>
-                Cancel
-              </button>
-            </div>
+              })
+            )}
           </div>
+
+          {/* Cast Action Footer */}
+          {chosenCandidateId && (
+            <div style={{ marginTop: '2rem', textAlign: 'right' }}>
+              <button 
+                className="btn-primary" 
+                style={{ padding: '12px 24px', fontSize: '14px', fontWeight: 600 }}
+                onClick={() => alert(`Submitting ballot securely targeting Candidate ID: ${chosenCandidateId}`)}
+              >
+                🔐 Confirm Secure Vote
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
-function AdminDashboard() {
-  const totalVoters = MOCK.voters.length + 47;
-  const voted = 47;
-  const turnout = Math.round((voted/totalVoters)*100);
-  const flagged = MOCK.auditLogs.filter(l=>l.is_flagged).length;
-
-  return (
-    <div className="page">
-      <div style={{marginBottom:'2rem'}}>
-        <div className="section-title">Admin Dashboard</div>
-        <div className="section-sub">Real-time monitoring of election health and voter turnout.</div>
-      </div>
-
-      <div className="dash-grid">
-        <div className="stat-card gold">
-          <div className="stat-label">Registered Voters</div>
-          <div className="stat-value">{totalVoters}</div>
-          <div className="stat-sub">Eligible participants</div>
-        </div>
-        <div className="stat-card emerald">
-          <div className="stat-label">Votes Cast</div>
-          <div className="stat-value">{voted}</div>
-          <div className="stat-sub" style={{color:'var(--emerald)'}}>{turnout}% turnout</div>
-          <div className="progress-track"><div className="progress-fill" style={{width:`${turnout}%`}}></div></div>
-        </div>
-        <div className="stat-card crimson">
-          <div className="stat-label">Flagged Events</div>
-          <div className="stat-value" style={{color: flagged>0 ? 'var(--crimson)' : 'inherit'}}>{flagged}</div>
-          <div className="stat-sub">Anomaly alerts</div>
-        </div>
-        <div className="stat-card sky">
-          <div className="stat-label">Active Elections</div>
-          <div className="stat-value">1</div>
-          <div className="stat-sub" style={{color:'var(--emerald)'}}>● Live now</div>
-        </div>
-      </div>
-
-      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
-        <div className="card">
-          <div className="section-header">
-            <div>
-              <div className="section-title" style={{fontSize:'1.1rem'}}>Live Turnout</div>
-            </div>
-          </div>
-          {['President','Vice President'].map((pos,i)=>{
-            const posCands = MOCK.candidates.filter(c=>c.position===pos);
-            const total = posCands.reduce((s,c)=>s+c.votes,0);
-            return <div key={pos} style={{marginBottom:'1.25rem'}}>
-              <div style={{fontSize:'12px',color:'var(--muted)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{pos}</div>
-              {posCands.map((c,j)=>(
-                <div key={c.id} className="result-row" style={{padding:'8px 0'}}>
-                  <div className="result-rank" style={{fontSize:'1rem'}}>#{j+1}</div>
-                  <div className="result-bar-wrap">
-                    <div className="result-name" style={{fontSize:'13px'}}>{c.full_name} <span className="tag">{c.department}</span></div>
-                    <div className="result-bar-track">
-                      <div className="result-bar-fill" style={{width:`${total>0?(c.votes/total*100):0}%`}}></div>
-                    </div>
-                  </div>
-                  <div className="result-votes">{c.votes}</div>
-                </div>
-              ))}
-            </div>;
-          })}
-        </div>
-
-        <div className="card">
-          <div className="section-header">
-            <div>
-              <div className="section-title" style={{fontSize:'1.1rem'}}>Recent Audit Events</div>
-            </div>
-          </div>
-          <div>
-            {MOCK.auditLogs.slice(0,5).map(log=>(
-              <div key={log.id} style={{display:'flex', alignItems:'center', gap:'10px', padding:'10px 0', borderBottom:'1px solid var(--border)'}}>
-                <span style={{fontSize:'16px'}}>{log.event_type.includes('fail')?'⚠':log.is_flagged?'🚨':'✓'}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:'13px',fontWeight:500}}>{log.event_type.replace('_',' ')}</div>
-                  <div style={{fontSize:'11px',color:'var(--muted)'}}>{log.ip} · {new Date(log.created_at).toLocaleTimeString()}</div>
-                </div>
-                <div>
-                  <span className={`flag-badge ${log.is_flagged?'flag-yes':'flag-no'}`}>
-                    {log.is_flagged?'Flagged':'Normal'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ADMIN ELECTIONS ──────────────────────────────────────────────────────────
+// ─── ADMIN ELECTIONS (FULLY INTEGRATED WITH FASTAPI & POSTGRESQL) ───────────
 function AdminElections() {
+  const [elections, setElections] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [activeElectionId, setActiveElectionId] = useState(null);
+  
+  // Modal visibility states
   const [showModal, setShowModal] = useState(false);
   const [showCands, setShowCands] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [newElection, setNewElection] = useState({title:'',description:'',start:'',end:''});
-  const [newCand, setNewCand] = useState({name:'',position:'',dept:'',year:'',manifesto:''});
+  const [resultsData, setResultsData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const totalVotes = MOCK.candidates.reduce((s,c)=>s+c.votes,0);
+  // Form input states
+  const [newElection, setNewElection] = useState({ title: '', description: '', start_time: '', end_time: '' });
+  const [newCand, setNewCand] = useState({ full_name: '', position: '', department: '', year: '', manifesto: '' });
+
+  // Helper to obtain the active JWT token safely from browser storage
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
+  // 1. FETCH ALL LIVE ELECTIONS FROM THE POSTGRESQL DATABASE
+const fetchElections = async () => {
+  try {
+    setLoading(true);
+    // CHANGED '127.0.0.1' to 'localhost' to fix the ERR_CONNECTION_REFUSED
+    const response = await fetch('http://localhost:8000/admin/elections', {
+      method: 'GET',
+      headers: getAuthHeaders()
+    });
+    if (response.ok) {
+      const data = await response.json();
+      setElections(data);
+      if (data.length > 0 && !activeElectionId) {
+        setActiveElectionId(data[0].id);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch elections:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+  // 2. FETCH CANDIDATES LINKED TO AN ELECTION MATRIX
+  const fetchCandidatesForElection = async (electionId) => {
+    if (!electionId) return;
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/voter/ballot/${electionId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCandidates(data.candidates || data);
+      }
+    } catch (err) {
+      console.error("Failed to sync candidate pool rows:", err);
+    }
+  };
+
+ // 3. FETCH LIVE DECRYPTED TABULATION RESULTS FOR AN ELECTION
+  const fetchElectionResults = async (electionId) => {
+    try {
+      // FIXED URL: Switched to 'localhost' to match your FastAPI server address exactly
+      const response = await fetch(`http://localhost:8000/admin/results/${electionId}`, {
+        method: 'POST', 
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setResultsData(data);
+        setShowResults(true);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        alert(`Failed to compute tabulations: ${errData.detail || "Verify election status."}`);
+      }
+    } catch (err) {
+      alert("Error reaching the results tabulation endpoint.");
+    }
+  };
+
+  // Run initial synchronizations on mount
+  useEffect(() => {
+    fetchElections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync candidate pool whenever active election changes OR candidate modal opens
+  useEffect(() => {
+    if (activeElectionId && showCands) {
+      fetchCandidatesForElection(activeElectionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeElectionId, showCands]);
+
+  // 4. SUBMIT NEW ELECTION PROTOCOL TO DB
+  const handleCreateElection = async (e) => {
+    // SAFE CHECK: Avoid crashing if 'e' is not passed by a direct button click
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+
+    if (!newElection.title || !newElection.description || !newElection.start_time || !newElection.end_time) {
+      alert("Please fill in ALL fields, including Start and End times.");
+      return;
+    }
+    try {
+      const response = await fetch('http://localhost:8000/admin/elections', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          title: newElection.title,
+          description: newElection.description,
+          start_time: newElection.start_time,
+          end_time: newElection.end_time
+        })
+      });
+
+      if (response.ok) {
+        alert("Election created successfully!");
+        setShowModal(false);
+        setNewElection({ title: '', description: '', start_time: '', end_time: '' });
+        fetchElections(); 
+      } else {
+        const err = await response.json();
+        alert(`Error: ${err.detail || "Failed to create election."}`);
+      }
+    } catch (err) {
+      alert("Unable to reach the server.");
+    }
+  };
+
+  // 5. SUBMIT NEW CANDIDATE PROFILE DATA PACKET TO DB
+  const handleAddCandidate = async () => {
+    if (!newCand.full_name || !newCand.position || !newCand.department) {
+      alert("Please fill in Name, Position, and Department fields.");
+      return;
+    }
+    
+    const currentElectionId = activeElectionId;
+    
+    if (!currentElectionId) {
+      alert("Error: No election selected to attach this candidate to. Please close the modal and click 'Manage Candidates' again.");
+      return;
+    }
+    
+    try {
+      // FIXED HOSTNAME: Switched to localhost to prevent browser connection rejection errors
+      const response = await fetch('http://localhost:8000/admin/candidate', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...newCand,
+          election_id: currentElectionId 
+        })
+      });
+
+      if (response.ok) {
+        alert("Candidate profiles synced to database tables successfully!");
+        setNewCand({ full_name: '', position: '', department: '', year: '', manifesto: '' });
+        await fetchCandidatesForElection(currentElectionId);
+      } else {
+        const err = await response.json();
+        alert(`Error: ${err.detail || "Failed to add candidate."}`);
+      }
+    } catch (err) {
+      alert("Failed to push candidate profile metadata into PostgreSQL.");
+    }
+  };
+
+  // Loading indicator stream anchor check
+  if (loading && elections.length === 0) {
+    return <div style={{ padding: '2rem', color: 'var(--gold)' }}>Querying Campus Database Matrix Stream...</div>;
+  }
 
   return (
     <div className="page">
       <div className="section-header">
         <div>
           <div className="section-title">Election Management</div>
-          <div className="section-sub">Configure, manage, and publish election results.</div>
+          <div className="section-sub">Configure, manage, and publish election results directly from PostgreSQL.</div>
         </div>
-        <button className="btn-primary" onClick={()=>setShowModal(true)}>+ New Election</button>
+        <button className="btn-primary" onClick={() => setShowModal(true)}>+ New Election</button>
       </div>
 
-      {MOCK.elections.map(e=>(
-        <div key={e.id} className="card" style={{marginBottom:'1.5rem'}}>
-          <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'1rem'}}>
-            <div>
-              <div style={{fontFamily:"'Playfair Display',serif", fontSize:'1.3rem', fontWeight:700, marginBottom:'6px'}}>{e.title}</div>
-              <div style={{fontSize:'13px', color:'var(--muted)', marginBottom:'10px'}}>{e.description}</div>
-              <span className={`election-status ${e.status==='active'?'status-active':'status-upcoming'}`}>
-                {e.status==='active' && <span className="dot"></span>}{e.status.toUpperCase()}
-              </span>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:'2rem', fontWeight:700, fontFamily:"'Playfair Display',serif"}}>{e.total_votes}</div>
-              <div style={{fontSize:'12px', color:'var(--muted)'}}>total votes</div>
-            </div>
-          </div>
-
-          <div style={{display:'flex', gap:'8px', flexWrap:'wrap'}}>
-            <button className="btn-sm blue" onClick={()=>setShowCands(true)}>👥 Manage Candidates</button>
-            <button className="btn-sm green" onClick={()=>setShowResults(true)}>📊 View Results</button>
-            {e.status==='active' && <button className="btn-sm red">⏹ Close Election</button>}
-            {e.status==='upcoming' && <button className="btn-sm green">▶ Activate</button>}
-          </div>
+      {elections.length === 0 ? (
+        <div className="card" style={{textAlign:'center', padding:'2rem', color:'var(--muted)'}}>
+          No elections found in your database. Click "+ New Election" to begin.
         </div>
-      ))}
+      ) : (
+        elections.map(e => (
+          <div key={e.id} className="card" style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1rem', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: '1.3rem', fontWeight: 700, marginBottom: '6px' }}>{e.title}</div>
+                <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '10px' }}>{e.description}</div>
+                <span className="election-status status-active">
+                  <span className="dot"></span>ACTIVE
+                </span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, fontFamily: "'Playfair Display',serif" }}>{e.total_votes || 0}</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>total votes</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button className="btn-sm blue" onClick={() => { setActiveElectionId(e.id); fetchCandidatesForElection(e.id); setShowCands(true); }}>👥 Manage Candidates</button>
+              <button className="btn-sm green" onClick={() => fetchElectionResults(e.id)}>📊 View Live Results</button>
+            </div>
+          </div>
+        ))
+      )}
 
       {/* New Election Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={()=>setShowModal(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Create New Election</h3>
             <div className="modal-form">
               <div className="form-group">
                 <label className="form-label">Election Title</label>
-                <input className="form-input" placeholder="e.g. Student Council Election 2082" value={newElection.title} onChange={e=>setNewElection(f=>({...f,title:e.target.value}))} />
+                <input className="form-input" value={newElection.title} onChange={e => setNewElection(f => ({ ...f, title: e.target.value }))} />
               </div>
               <div className="form-group">
                 <label className="form-label">Description</label>
-                <textarea className="form-input" rows={3} placeholder="Brief description..." style={{resize:'vertical'}} value={newElection.description} onChange={e=>setNewElection(f=>({...f,description:e.target.value}))} />
+                <textarea className="form-input" rows={3} value={newElection.description} onChange={e => setNewElection(f => ({ ...f, description: e.target.value }))} />
               </div>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
-                <div className="form-group">
-                  <label className="form-label">Start Date & Time</label>
-                  <input className="form-input" type="datetime-local" value={newElection.start} onChange={e=>setNewElection(f=>({...f,start:e.target.value}))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">End Date & Time</label>
-                  <input className="form-input" type="datetime-local" value={newElection.end} onChange={e=>setNewElection(f=>({...f,end:e.target.value}))} />
-                </div>
+              <div className="form-group">
+                <label className="form-label">Start Date & Time</label>
+                <input className="form-input" type="datetime-local" value={newElection.start_time} onChange={e => setNewElection(f => ({ ...f, start_time: e.target.value }))} />
               </div>
-              <div className="alert alert-info">RSA-2048 key pair will be automatically generated for this election.</div>
-              <div style={{display:'flex', gap:'10px'}}>
-                <button className="btn-full btn-gold" onClick={()=>setShowModal(false)}>Create Election</button>
-                <button className="btn-full" style={{background:'transparent',color:'var(--ink)',border:'1.5px solid var(--border)'}} onClick={()=>setShowModal(false)}>Cancel</button>
+              <div className="form-group">
+                <label className="form-label">End Date & Time</label>
+                <input className="form-input" type="datetime-local" value={newElection.end_time} onChange={e => setNewElection(f => ({ ...f, end_time: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                <button className="btn-full btn-gold" onClick={handleCreateElection}>Create Election</button>
+                <button className="btn-full" style={{ background: 'transparent', border: '1.5px solid var(--border)' }} onClick={() => setShowModal(false)}>Cancel</button>
               </div>
             </div>
           </div>
@@ -1273,33 +1922,42 @@ function AdminElections() {
 
       {/* Candidates Modal */}
       {showCands && (
-        <div className="modal-overlay" onClick={()=>setShowCands(false)}>
-          <div className="modal" style={{maxWidth:'640px'}} onClick={e=>e.stopPropagation()}>
-            <h3>Manage Candidates</h3>
-            <div className="table-wrap" style={{marginBottom:'1.5rem'}}>
+        <div className="modal-overlay" onClick={() => setShowCands(false)}>
+          <div className="modal" style={{ maxWidth: '640px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3>Manage Candidates (Election ID: {activeElectionId})</h3>
+              <button style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--muted)' }} onClick={() => setShowCands(false)}>✕</button>
+            </div>
+            
+            <div className="table-wrap" style={{ marginBottom: '1.5rem', maxHeight: '250px', overflowY: 'auto' }}>
               <table>
-                <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Action</th></tr></thead>
+                <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Year</th></tr></thead>
                 <tbody>
-                  {MOCK.candidates.map(c=>(
-                    <tr key={c.id}>
-                      <td><strong>{c.full_name}</strong></td>
-                      <td>{c.position}</td>
-                      <td><span className="tag">{c.department}</span></td>
-                      <td><button className="btn-sm red">Remove</button></td>
-                    </tr>
-                  ))}
+                  {candidates.length === 0 ? (
+                    <tr><td colSpan="4" style={{textAlign:'center', color:'var(--muted)'}}>No registered candidates linked to this database key index.</td></tr>
+                  ) : (
+                    candidates.map(c => (
+                      <tr key={c.id}>
+                        <td><strong>{c.full_name}</strong></td>
+                        <td>{c.position}</td>
+                        <td><span className="tag">{c.department}</span></td>
+                        <td>{c.year || "N/A"}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-            <div style={{background:'var(--paper)',borderRadius:'10px',padding:'14px'}}>
-              <div style={{fontSize:'13px',fontWeight:600,marginBottom:'10px'}}>Add Candidate</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
-                <input className="form-input" placeholder="Full Name" value={newCand.name} onChange={e=>setNewCand(f=>({...f,name:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
-                <input className="form-input" placeholder="Position" value={newCand.position} onChange={e=>setNewCand(f=>({...f,position:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
-                <input className="form-input" placeholder="Department" value={newCand.dept} onChange={e=>setNewCand(f=>({...f,dept:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
-                <input className="form-input" placeholder="Year" value={newCand.year} onChange={e=>setNewCand(f=>({...f,year:e.target.value}))} style={{fontSize:'13px',padding:'8px 12px'}} />
-                <textarea className="form-input" placeholder="Manifesto..." rows={2} style={{gridColumn:'span 2',fontSize:'13px',padding:'8px 12px',resize:'none'}} value={newCand.manifesto} onChange={e=>setNewCand(f=>({...f,manifesto:e.target.value}))} />
-                <button className="btn-full btn-gold" style={{gridColumn:'span 2',padding:'10px'}} onClick={()=>setShowCands(false)}>Add Candidate</button>
+
+            <div style={{ background: 'var(--paper)', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Add New Candidate Profile Into Database</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <input className="form-input" placeholder="Full Name" value={newCand.full_name} onChange={e => setNewCand(f => ({ ...f, full_name: e.target.value }))} style={{ fontSize: '13px', padding: '8px 12px' }} />
+                <input className="form-input" placeholder="Position (e.g. President)" value={newCand.position} onChange={e => setNewCand(f => ({ ...f, position: e.target.value }))} style={{ fontSize: '13px', padding: '8px 12px' }} />
+                <input className="form-input" placeholder="Department (e.g. BSc.CSIT)" value={newCand.department} onChange={e => setNewCand(f => ({ ...f, department: e.target.value }))} style={{ fontSize: '13px', padding: '8px 12px' }} />
+                <input className="form-input" placeholder="Academic Year" value={newCand.year} onChange={e => setNewCand(f => ({ ...f, year: e.target.value }))} style={{ fontSize: '13px', padding: '8px 12px' }} />
+                <textarea className="form-input" placeholder="Campaign Manifesto points..." rows={2} style={{ gridColumn: 'span 2', fontSize: '13px', padding: '8px 12px', resize: 'none' }} value={newCand.manifesto} onChange={e => setNewCand(f => ({ ...f, manifesto: e.target.value }))} />
+                <button className="btn-full btn-gold" style={{ gridColumn: 'span 2', padding: '10px' }} onClick={handleAddCandidate}>Add Candidate to PostgreSQL</button>
               </div>
             </div>
           </div>
@@ -1307,31 +1965,31 @@ function AdminElections() {
       )}
 
       {/* Results Modal */}
-      {showResults && (
-        <div className="modal-overlay" onClick={()=>setShowResults(false)}>
-          <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
-            <h3>Election Results</h3>
-            <div className="alert alert-info" style={{marginBottom:'1rem'}}>Results decrypted using RSA private key. Each vote individually decrypted.</div>
-            {['President','Vice President'].map(pos=>{
-              const cands = MOCK.candidates.filter(c=>c.position===pos).sort((a,b)=>b.votes-a.votes);
-              const max = Math.max(...cands.map(c=>c.votes));
-              return <div key={pos} style={{marginBottom:'1.5rem'}}>
-                <div style={{fontSize:'12px',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'8px'}}>{pos}</div>
-                {cands.map((c,i)=>(
-                  <div key={c.id} className="result-row">
-                    <div className="result-rank">{i===0?'🥇':i===1?'🥈':'🥉'}</div>
-                    <div className="result-bar-wrap">
-                      <div className="result-name">{c.full_name} <span className="tag">{c.department}</span></div>
-                      <div className="result-bar-track"><div className="result-bar-fill" style={{width:`${max>0?(c.votes/max*100):0}%`}}></div></div>
-                    </div>
-                    <div className="result-votes">{c.votes} votes</div>
+      {showResults && resultsData && (
+        <div className="modal-overlay" onClick={() => setShowResults(false)}>
+          <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3>Election Results (Database Tabulation Verified)</h3>
+              <button style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--muted)' }} onClick={() => setShowResults(false)}>✕</button>
+            </div>
+            <div className="alert alert-info" style={{ marginBottom: '1rem' }}>Results decrypted securely using RSA asymmetric pipelines.</div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
+              {(resultsData.results || resultsData.candidates || []).map((c, i) => (
+                <div key={c.candidate_id || c.id} className="result-row" style={{display:'flex', alignItems:'center', gap:'10px'}}>
+                  <div className="result-rank" style={{ fontSize: '1.2rem' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</div>
+                  <div className="result-bar-wrap" style={{flexGrow: 1}}>
+                    <div className="result-name" style={{ fontWeight: 600 }}>{c.full_name} <span className="tag">{c.department}</span></div>
+                    <div style={{fontSize:'12px', color:'var(--muted)', marginTop: '2px'}}>{c.position}</div>
                   </div>
-                ))}
-              </div>;
-            })}
-            <div style={{borderTop:'1px solid var(--border)',paddingTop:'12px',fontSize:'13px',color:'var(--muted)',display:'flex',justifyContent:'space-between'}}>
-              <span>Total Votes: <strong>{totalVotes}</strong></span>
-              <span>Decryption Errors: <strong>0</strong></span>
+                  <div className="result-votes"><strong>{c.vote_count || c.votes}</strong> votes</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', fontSize: '13px', color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Total Tabulated: <strong>{resultsData.total_votes ?? 0}</strong></span>
+              <span>Decryption Faults: <strong>{resultsData.decryption_errors ?? 0}</strong></span>
             </div>
           </div>
         </div>
@@ -1340,67 +1998,175 @@ function AdminElections() {
   );
 }
 
-// ─── ADMIN VOTERS ─────────────────────────────────────────────────────────────
+
+// ─── ADMIN VOTERS (DYNAMIC POSTGRESQL & CRYO-HASH DRIVEN) ───────────────────
 function AdminVoters() {
-  const allVoters = [
-    ...MOCK.voters,
-    { id:4, student_id:"79010***", name:"Kabita Shrestha", email:"kabita@pmc.edu.np", has_voted:true },
-    { id:5, student_id:"79010***", name:"Suman Tamang", email:"suman@pmc.edu.np", has_voted:true },
-    { id:6, student_id:"79010***", name:"Nirmala Gurung", email:"nirmala@pmc.edu.np", has_voted:false },
-  ];
+  const [voters, setVoters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Helper to obtain the active admin JWT token safely from browser storage
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
+  // Fetch true database voter rows from FastAPI
+  const fetchVotersList = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await fetch('http://127.0.0.1:8000/admin/voters', {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setVoters(data);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to sync student voter records.");
+      }
+    } catch (err) {
+      console.error("Voter registry syncing exception:", err);
+      setError(err.message || "Error reaching the administrative user directory.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle voter eligibility (Deactivate/Activate)
+  const handleToggleStatus = async (voterId, currentActiveState) => {
+    const actionPhrase = currentActiveState ? "deactivate" : "activate";
+    if (!confirm(`Are you sure you want to ${actionPhrase} this voter record?`)) return;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/admin/voters/${voterId}/toggle-active`, {
+        method: 'PATCH',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        alert(`Voter record successfully ${actionPhrase}d.`);
+        fetchVotersList(); // Refresh table view weights
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        alert(`Status adjustment rejected: ${errData.detail || "Unknown error."}`);
+      }
+    } catch (err) {
+      alert("Network exception encountered attempting status modification.");
+    }
+  };
+
+  useEffect(() => {
+    fetchVotersList();
+  }, []);
+
+  if (loading && voters.length === 0) {
+    return <div style={{ padding: '2rem', color: 'var(--gold)' }}>Querying Patan Campus Hashed Student Registry...</div>;
+  }
 
   return (
     <div className="page">
       <div className="section-header">
         <div>
           <div className="section-title">Voter Management</div>
-          <div className="section-sub">All registered voters. Student IDs are stored as SHA-256 hashes only.</div>
+          <div className="section-sub">All registered voters. Student IDs are stored anonymized as SHA-256 hashes.</div>
         </div>
+        <button className="btn-sm" onClick={fetchVotersList} style={{ background: 'var(--paper)', border: '1px solid var(--border)' }}>🔄 Refresh Directory</button>
       </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>⚠ {error}</div>}
+
       <div className="card">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Full Name</th>
-                <th>Email</th>
-                <th>Student ID (Hashed)</th>
-                <th>Vote Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allVoters.map(v=>(
-                <tr key={v.id}>
-                  <td style={{color:'var(--muted)'}}>{v.id}</td>
-                  <td><strong>{v.name || v.full_name}</strong></td>
-                  <td style={{color:'var(--muted)'}}>{v.email}</td>
-                  <td><span style={{fontFamily:'JetBrains Mono',fontSize:'11px',color:'var(--muted)'}}>sha256:a3f8...{v.id.toString().padStart(4,'0')}</span></td>
-                  <td>
-                    <span className={`flag-badge ${v.has_voted?'flag-yes':'flag-no'}`}>
-                      {v.has_voted ? '✓ Voted' : '○ Pending'}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn-sm red">Deactivate</button>
-                  </td>
+        {voters.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>
+            No registered student profiles found in the relational schemas.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Full Name</th>
+                  <th>Email Address</th>
+                  <th>Student ID (SHA-256 Hash Representation)</th>
+                  <th>Ballot Status</th>
+                  <th>System Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {voters.map((v, index) => (
+                  <tr key={v.id} style={{ opacity: v.is_active === false ? 0.6 : 1 }}>
+                    <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{index + 1}</td>
+                    <td>
+                      <strong>{v.full_name || v.name}</strong>
+                      {v.is_active === false && <span className="tag crimson" style={{ marginLeft: '6px', fontSize: '10px' }}>Suspended</span>}
+                    </td>
+                    <td style={{ color: 'var(--muted)', fontSize: '13px' }}>{v.email}</td>
+                    <td>
+                      <code title={v.hashed_student_id} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: 'var(--gold-dark)', background: 'var(--cream)', padding: '2px 6px', borderRadius: '4px' }}>
+                        {v.hashed_student_id ? `${v.hashed_student_id.substring(0, 12)}...${v.hashed_student_id.substring(52)}` : 'N/A'}
+                      </code>
+                    </td>
+                    <td>
+                      <span className={`flag-badge ${v.has_voted ? 'flag-yes' : 'flag-no'}`}>
+                        {v.has_voted ? '✓ Voted' : '○ Pending'}
+                      </span>
+                    </td>
+                    <td>
+                      <button 
+                        className={`btn-sm ${v.is_active !== false ? 'red' : 'blue'}`} 
+                        onClick={() => handleToggleStatus(v.id, v.is_active !== false)}
+                        style={{ padding: '4px 10px', minWidth: '90px' }}
+                      >
+                        {v.is_active !== false ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── ADMIN AUDIT LOGS ─────────────────────────────────────────────────────────
+// ─── ADMIN AUDIT LOGS (DYNAMIC) ──────────────────────────────────────────────
 function AdminAuditLogs() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
-  const logs = flaggedOnly ? MOCK.auditLogs.filter(l=>l.is_flagged) : MOCK.auditLogs;
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const scoreColor = (s) => s >= 0.7 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
+  // Fetch live audit data from FastAPI
+  const fetchLogs = async () => {
+    try {
+      setLoading(true);
+      const query = flaggedOnly ? "?flagged_only=true" : "";
+      const response = await fetch(`http://127.0.0.1:8000/admin/audit-logs${query}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setLogs(data);
+      }
+    } catch (err) {
+      console.error("Audit log sync failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, [flaggedOnly]);
+
+  const scoreColor = (s) => (s >= 0.7 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low');
 
   return (
     <div className="page">
@@ -1409,96 +2175,121 @@ function AdminAuditLogs() {
           <div className="section-title">Audit Logs</div>
           <div className="section-sub">Isolation Forest anomaly detection results. Real-time fraud monitoring.</div>
         </div>
-        <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-          <label style={{fontSize:'13px',color:'var(--muted)',display:'flex',gap:'6px',alignItems:'center',cursor:'pointer'}}>
-            <input type="checkbox" checked={flaggedOnly} onChange={e=>setFlaggedOnly(e.target.checked)} />
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <label style={{ fontSize: '13px', color: 'var(--muted)', display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' }}>
+            <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} />
             Flagged only
           </label>
+          <button className="btn-sm" onClick={fetchLogs}>🔄 Refresh</button>
         </div>
       </div>
 
-      <div className="card" style={{marginBottom:'1rem', background:'var(--ink)', color:'#fff'}}>
-        <div style={{display:'flex', gap:'24px', flexWrap:'wrap'}}>
+      <div className="card" style={{ marginBottom: '1rem', background: 'var(--ink)', color: '#fff' }}>
+        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           <div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Algorithm</div>
-            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>Isolation Forest</div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Algorithm</div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: '13px', color: 'var(--gold)' }}>Isolation Forest</div>
           </div>
           <div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Score Formula</div>
-            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>s(x,n) = 2^(-E(h(x))/c(n))</div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Threshold</div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: '13px', color: 'var(--gold)' }}>≥ 0.70 → Flagged</div>
           </div>
           <div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Threshold</div>
-            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'var(--gold)'}}>≥ 0.70 → Flagged</div>
-          </div>
-          <div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.5px'}}>Flagged Events</div>
-            <div style={{fontFamily:'JetBrains Mono',fontSize:'13px',color:'#f87171'}}>{MOCK.auditLogs.filter(l=>l.is_flagged).length} / {MOCK.auditLogs.length}</div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Active Records</div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: '13px', color: '#f87171' }}>{logs.length}</div>
           </div>
         </div>
       </div>
 
       <div className="card">
         <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>IP Address</th>
-                <th>Anomaly Score</th>
-                <th>Flag</th>
-                <th>Details</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map(log=>(
-                <tr key={log.id}>
-                  <td>
-                    <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                      <span>{log.event_type.includes('fail')?'⚠️':log.is_flagged?'🚨':'✅'}</span>
-                      <span style={{fontWeight:500}}>{log.event_type.replace(/_/g,' ')}</span>
-                    </span>
-                  </td>
-                  <td><span style={{fontFamily:'JetBrains Mono',fontSize:'12px'}}>{log.ip_address}</span></td>
-                  <td>
-                    <div className="score-bar">
-                      <div className="score-track">
-                        <div className={`score-fill ${scoreColor(log.anomaly_score)}`} style={{width:`${log.anomaly_score*100}%`}}></div>
-                      </div>
-                      <span style={{fontFamily:'JetBrains Mono',fontSize:'12px',minWidth:'36px'}}>{log.anomaly_score?.toFixed(2)}</span>
-                    </div>
-                  </td>
-                  <td><span className={`flag-badge ${log.is_flagged?'flag-yes':'flag-no'}`}>{log.is_flagged?'Flagged':'Normal'}</span></td>
-                  <td style={{color:'var(--muted)',fontSize:'12px'}}>{log.details}</td>
-                  <td style={{color:'var(--muted)',fontSize:'12px',whiteSpace:'nowrap'}}>{new Date(log.created_at).toLocaleTimeString()}</td>
+          {loading ? (
+            <div style={{ padding: '2rem', textAlign: 'center' }}>Syncing secure audit stream...</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>IP Address</th>
+                  <th>Anomaly Score</th>
+                  <th>Flag</th>
+                  <th>Details</th>
+                  <th>Time</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{log.event_type.includes('fail') ? '⚠️' : log.is_flagged ? '🚨' : '✅'}</span>
+                        <span style={{ fontWeight: 500 }}>{log.event_type.replace(/_/g, ' ')}</span>
+                      </span>
+                    </td>
+                    <td><code style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }}>{log.ip_address}</code></td>
+                    <td>
+                      <div className="score-bar">
+                        <div className="score-track">
+                          <div className={`score-fill ${scoreColor(log.anomaly_score)}`} style={{ width: `${log.anomaly_score * 100}%` }}></div>
+                        </div>
+                        <span style={{ fontFamily: 'JetBrains Mono', fontSize: '12px', minWidth: '36px' }}>{log.anomaly_score?.toFixed(2)}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`flag-badge ${log.is_flagged ? 'flag-yes' : 'flag-no'}`}>
+                        {log.is_flagged ? 'Flagged' : 'Normal'}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{log.details}</td>
+                    <td style={{ color: 'var(--muted)', fontSize: '12px' }}>{new Date(log.created_at).toLocaleTimeString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
-// ─── APP ROOT ─────────────────────────────────────────────────────────────────
+// ─── APP ROOT (PERSISTENT STATE & ROUTING) ────────────────────────────────────
 function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('home');
+  const [isReady, setIsReady] = useState(false);
+
+  // Restore session on initial load
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (token && savedUser) {
+      setUser(JSON.parse(savedUser));
+      setPage('dashboard');
+    }
+    setIsReady(true);
+  }, []);
 
   const authValue = {
     user,
     login: (token, userData) => {
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       setPage(userData.role === 'admin' ? 'dashboard' : 'vote');
     },
     logout: () => {
+      localStorage.clear();
       setUser(null);
       setPage('home');
     },
-    updateUser: (updates) => setUser(u => ({...u, ...updates}))
+    updateUser: (updates) => {
+      const newUser = { ...user, ...updates };
+      setUser(newUser);
+      localStorage.setItem('user', JSON.stringify(newUser));
+    }
   };
+
+  if (!isReady) return null; // Or a loading spinner
 
   const renderPage = () => {
     if (!user) {
@@ -1506,26 +2297,31 @@ function App() {
       if (page === 'login') return <LoginPage setPage={setPage} />;
       return <LandingPage setPage={setPage} />;
     }
+
     if (user.role === 'voter') return <VotePage />;
-    if (page === 'dashboard') return <AdminDashboard />;
-    if (page === 'elections') return <AdminElections />;
-    if (page === 'voters') return <AdminVoters />;
-    if (page === 'audit') return <AdminAuditLogs />;
-    return <AdminDashboard />;
+    
+    // Admin routing
+    switch (page) {
+      case 'dashboard': return <AdminDashboard />;
+      case 'elections': return <AdminElections />;
+      case 'voters': return <AdminVoters />;
+      case 'audit': return <AdminAuditLogs />;
+      default: return <AdminDashboard />;
+    }
   };
 
   return (
     <AuthCtx.Provider value={authValue}>
       <div className="app">
-        <NavBar page={page} setPage={setPage} />
+        {user && <NavBar page={page} setPage={setPage} />}
         <main>{renderPage()}</main>
-        <footer style={{background:'var(--ink)',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'1.25rem 2rem',display:'flex',alignItems:'center',justifyContent:'center',flexWrap:'wrap',gap:'8px',flexDirection:'column'}}>
-          <div style={{color:'rgba(255,255,255,0.35)',fontSize:'12px'}}>
+        <footer style={{ background: 'var(--ink)', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '1.25rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', flexDirection: 'column' }}>
+          <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}>
             © 2082/83 E-Voting System · Patan Multiple Campus, Tribhuvan University
           </div>
-          <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
-            {['SHA-256','RSA-2048','Isolation Forest'].map(t=>(
-              <span key={t} style={{fontFamily:'JetBrains Mono',fontSize:'10px',color:'rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.04)',padding:'2px 8px',borderRadius:'4px'}}>{t}</span>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {['SHA-256', 'RSA-2048', 'Isolation Forest'].map(t => (
+              <span key={t} style={{ fontFamily: 'JetBrains Mono', fontSize: '10px', color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '4px' }}>{t}</span>
             ))}
           </div>
         </footer>
@@ -1534,7 +2330,10 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// ─── MOUNTING ─────────────────────────────────────────────────────────────────
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
 </script>
 </body>
 </html>

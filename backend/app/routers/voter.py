@@ -1,45 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from jose import JWTError, jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import update 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from ..database import get_db
-from ..schemas import CastVoteRequest, VoteResponse, ElectionResponse, CandidateResponse
-from ..services.auth_service import decode_token, get_user_by_id
+from ..schemas import CastVoteRequest, VoteResponse
+from .auth import get_current_user  
 from ..services.vote_service import cast_vote
 from ..models.election import Election, ElectionStatus
 from ..models.candidate import Candidate
 from ..models.user import User
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+# 
 router = APIRouter(prefix="/voter", tags=["Voter"])
-security = HTTPBearer()
-
-
-def get_current_voter(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
-    payload = decode_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    user = get_user_by_id(db, int(payload["sub"]))
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or inactive.")
-    return user
 
 
 @router.get("/ballot/{election_id}")
-def get_ballot(election_id: int, db: Session = Depends(get_db), voter: User = Depends(get_current_voter)):
+async def get_ballot(
+    election_id: int, 
+    db: AsyncSession = Depends(get_db), 
+    voter: User = Depends(get_current_user)
+):
     """Return the ballot for the active election including candidates and public key."""
-    election = db.query(Election).filter(Election.id == election_id).first()
+    result = await db.execute(select(Election).filter(Election.id == election_id))
+    election = result.scalars().first()
+    
     if not election:
-        raise HTTPException(status_code=404, detail="Election not found.")
+        raise HTTPException(status_code=404, detail="Election matrix index not found.")
     if election.status != ElectionStatus.active:
-        raise HTTPException(status_code=400, detail="Election is not currently active.")
+        raise HTTPException(status_code=400, detail="Requested target election is not currently active.")
+    
     if voter.has_voted:
-        raise HTTPException(status_code=400, detail="You have already voted in this election.")
+        raise HTTPException(status_code=400, detail="Security violation: Account has already cast a ballot.")
 
-    candidates = db.query(Candidate).filter(Candidate.election_id == election_id).all()
+    if voter.verification_code is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Please verify your 6-digit email confirmation code before viewing the ballot."
+        )
+
+    cand_result = await db.execute(select(Candidate).filter(Candidate.election_id == election_id))
+    candidates = cand_result.scalars().all()
 
     return {
         "election": {
@@ -68,23 +69,33 @@ def get_ballot(election_id: int, db: Session = Depends(get_db), voter: User = De
 
 
 @router.post("/cast", response_model=VoteResponse)
-def cast_voter_vote(
+async def cast_voter_vote(
     req: CastVoteRequest,
     request: Request,
-    db: Session = Depends(get_db),
-    voter: User = Depends(get_current_voter)
+    db: AsyncSession = Depends(get_db),
+    voter: User = Depends(get_current_user)
 ):
-    """
-    Cast an encrypted vote.
-    Vote must be RSA-encrypted on the client side before sending.
-    """
+    """Cast an encrypted vote and forcefully update voter eligibility status."""
     ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "")
 
+    # Apply row-level locking (FOR UPDATE) right at the transaction start
+    voter_query = await db.execute(
+        select(User).filter(User.id == voter.id).with_for_update()
+    )
+    locked_voter = voter_query.scalars().first()
+
+    if not locked_voter or locked_voter.has_voted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transaction Rejected: Ballot submission already recorded for this voter."
+        )
+
     try:
-        result = cast_vote(
+        # 1. Execute core business logic (dropping anonymized vote, processing ML features)
+        result = await cast_vote(
             db=db,
-            voter=voter,
+            voter=locked_voter,
             election_id=req.election_id,
             encrypted_vote=req.encrypted_vote,
             ip_address=ip,
@@ -92,8 +103,24 @@ def cast_voter_vote(
             time_since_login=req.time_since_login,
             session_duration=req.session_duration,
         )
+        
+        # 🌟 2. DIRECT SQL FORCE-WRITE OVERRIDE
+        # Bypasses any async tracking maps by forcing a explicit update statement 
+        await db.execute(
+            update(User)
+            .where(User.id == voter.id)
+            .values(has_voted=True)
+        )
+        
+        # 🌟 3. COMMIT AT THE ROUTER BOUNDARY
+        await db.commit()
+
     except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database state mutation crash: {str(e)}")
 
     return VoteResponse(
         success=result["success"],
@@ -103,11 +130,13 @@ def cast_voter_vote(
 
 
 @router.get("/elections/active")
-def get_active_elections(db: Session = Depends(get_db), voter: User = Depends(get_current_voter)):
+async def get_active_elections(
+    db: AsyncSession = Depends(get_db), 
+    voter: User = Depends(get_current_user)
+):
     """List all active elections the voter can participate in."""
-    from datetime import datetime
-    now = datetime.utcnow()
-    elections = db.query(Election).filter(Election.status == ElectionStatus.active).all()
+    result = await db.execute(select(Election).filter(Election.status == ElectionStatus.active))
+    elections = result.scalars().all()
     return [
         {
             "id": e.id,
@@ -121,8 +150,8 @@ def get_active_elections(db: Session = Depends(get_db), voter: User = Depends(ge
 
 
 @router.get("/status")
-def voter_status(voter: User = Depends(get_current_voter)):
-    """Return current voter status."""
+async def voter_status(voter: User = Depends(get_current_user)):
+    """Return current voter status metrics."""
     return {
         "user_id": voter.id,
         "full_name": voter.full_name,

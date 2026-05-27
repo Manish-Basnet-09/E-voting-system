@@ -1,10 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .config import settings
-from .database import create_tables
-from .routers import auth, voter, admin
+from contextlib import asynccontextmanager
 import uvicorn
 
+# Importing your project modules
+from .config import settings
+from .database import create_tables
+from .routers.auth import router as auth_router
+from .routers.voter import router as voter_router
+from .routers.admin import router as admin_router
+
+# 1. Lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Run database initialization
+    await create_tables()
+    print(f"✅ {settings.app_name} v{settings.app_version} started.")
+    yield
+    # Shutdown logic
+    print("🛑 Server shutting down.")
+
+# 2. FastAPI Application Instance
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -12,23 +28,13 @@ app = FastAPI(
 ## E-Voting System — Patan Multiple Campus, Tribhuvan University
 
 A secure, transparent, and verifiable digital voting platform.
-
-### Security Stack
-- **SHA-256** salted hashing for Student ID (One-ID-One-Vote)
-- **RSA** asymmetric encryption for vote privacy
-- **Isolation Forest** ML for real-time fraud detection
-- **JWT** + **OTP** for three-factor authentication
-
-### Submitted By
-- Ashutosh Adhikari (79010020)
-- Manish Basnet (79010054)
-- Snehal Sigdel (79010119)
     """,
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS
+# 3. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
@@ -37,36 +43,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(auth.router)
-app.include_router(voter.router)
-app.include_router(admin.router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    create_tables()
-    print(f"✅ {settings.app_name} v{settings.app_version} started.")
-    print("📋 API Docs: http://localhost:8000/docs")
-
+# 4. Include Routers
+app.include_router(auth_router, tags=["Authentication"])
+app.include_router(voter_router, tags=["Voter"])
+app.include_router(admin_router, tags=["Admin"])
 
 @app.get("/", tags=["Root"])
-def root():
+async def root():
     return {
-        "system": settings.app_name,
-        "version": settings.app_version,
-        "status": "operational",
-        "institution": "Patan Multiple Campus — Tribhuvan University",
-        "security": ["SHA-256", "RSA-2048", "Isolation Forest", "JWT+OTP"],
-        "docs": "/docs",
+        "status": "operational", 
+        "institution": "Patan Multiple Campus",
+        "docs": "http://127.0.0.1:8000/docs"
     }
 
-
-@app.get("/health", tags=["Root"])
-def health():
-    return {"status": "healthy"}
-
-#  Run the server
+# 5. Execution Block
 if __name__ == "__main__":
-    print("Server started! Go to http://127.0.0.1:8000/docs to see the Swagger UI.")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # We use "app.main:app" because the file is located at backend/app/main.py
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
